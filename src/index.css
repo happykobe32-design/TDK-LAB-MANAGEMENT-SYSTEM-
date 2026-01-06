@@ -1,0 +1,393 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: system-ui;
+}
+
+body {
+  background-color: #f3f4f6;
+}
+
+/* =============== 登入頁 =============== */
+
+.login-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1e90ff, #00c6ff);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.login-card {
+  width: 900px;
+  height: 420px;
+  background: white;
+  border-radius: 16px;
+  display: flex;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.login-left {
+  width: 50%;
+  background: linear-gradient(135deg, #00b4db, #0083b0);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+}
+
+.login-left h2 {
+  font-size: 26px;
+  letter-spacing: 4px;
+}
+
+.login-right {
+  width: 50%;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.login-right h2 {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-right input {
+  padding: 12px;
+  font-size: 16px;
+  margin-bottom: 16px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  width: 100%;
+}
+
+.login-right button {
+  padding: 12px;
+  background: #2563eb;
+  color: white;
+  font-size: 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+.login-right button:hover {
+  background: #1d4ed8;
+}
+
+/* =============== 主系統 Layout =============== */
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ===== Sidebar ===== */
+
+.sidebar {
+  background: #1f2933;
+  color: white;
+  padding: 20px 16px;
+  transition: all 0.25s ease;
+  width: 240px;
+  flex-shrink: 0;
+}
+
+.sidebar.close {
+  width: 70px;
+  overflow: hidden;
+}
+
+.sidebar.close h3,
+.sidebar.close button,
+.sidebar.close div {
+  display: none;
+}
+
+.sidebar h3 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.sidebar button {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: transparent;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebar button:hover {
+  background: #374151;
+}
+
+.sidebar .logout {
+  margin-top: 20px;
+  background: #ef4444;
+}
+
+/* ===== 主內容 ===== */
+
+.main {
+  flex: 1;
+  padding: 20px;
+  transition: all 0.25s ease;
+}
+
+/* ===== Header ===== */
+
+.topbar {
+  background: white;
+  padding: 14px 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+.toggle {
+  font-size: 22px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+/* ===== Dashboard 卡片 ===== */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.card {
+  background: white;
+  padding: 16px;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* ===== 表格 ===== */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+th, td {
+  border: 1px solid #070707;
+  padding: 10px;
+  text-align: center;
+}
+
+th {
+  background: #2563eb;
+  color: white;
+}
+
+/* ===== 表單 ===== */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+input, select, textarea {
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+textarea {
+  grid-column: span 3;
+}
+
+form button {
+  grid-column: span 3;
+  background: #2563eb;
+  color: white;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+form button:hover {
+  background: #0c43db;
+}
+
+/* ✅ Sidebar 完全隱藏（真正收起） */
+.sidebar.hidden {
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ✅ 左上角選單鈕（最左上角用） */
+.menu-btn {
+  font-size: 22px;
+  background: #eef0f4;
+  color: rgb(15, 15, 15);
+  border: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+/* ✅ 系統標題固定在中間 */
+.system-title {
+  flex: 1;
+  text-align: center;
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+
+/* ✅ 修正 topbar 為左 → 中 → 右結構 */
+.topbar {
+  justify-content: space-between;
+}
+
+/* ===== Run Card 區塊化表單（粗框＋標題） ===== */
+
+.rc-block {
+  border: 2.5px solid #0b0b0b;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  background: white;
+}
+
+.rc-title {
+  background: #2563eb;
+  color: white;
+  font-weight: bold;
+  padding: 10px 14px;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+
+.rc-body {
+  display: grid;
+  grid-template-columns: 120px 1fr 120px 1fr;
+  border-top: 2px solid #070707;
+}
+
+.rc-label {
+  background: #f1f5f9;
+  border-right: 1px solid #090909;
+  border-bottom: 1px solid #080909;
+  padding: 10px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.rc-input {
+  border-bottom: 1px solid #070707;
+  border-right: 1px solid #090909;
+  padding: 8px;
+}
+
+.rc-input input,
+.rc-input select,
+.rc-input textarea {
+  width: 100%;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #0d0d0e;
+}
+
+.rc-input textarea {
+  resize: vertical;
+}
+
+
+/* ================================================= */
+/* 🟢 新增：Tab 導航樣式 (用來取代 Sidebar 的按鈕導航) */
+/* ================================================= */
+
+.tab-nav-container {
+    display: flex;
+    /* 將 Tab 條放在 topbar 容器下方 */
+    border-bottom: 2px solid #e5e7eb; /* 淺灰色底線 */
+    margin-bottom: 20px; 
+    padding: 0 5px; 
+    overflow-x: auto; 
+    background-color: white; /* 確保 Tab 區塊背景是白色 */
+}
+
+.tab-nav-btn {
+    /* 重設按鈕樣式 */
+    background: transparent !important;
+    color: #4b5563 !important; /* 預設文字顏色 */
+    border: none !important;
+    cursor: pointer;
+    text-align: center;
+    
+    /* Tab 專用樣式 */
+    padding: 10px 15px;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: -2px; /* 讓 active 的 border-bottom 蓋在 container 的 border 上 */
+    transition: all 0.15s ease-in-out;
+    border-bottom: 3px solid transparent; /* 預留空間給 active 狀態 */
+    border-radius: 0;
+    
+    /* 確保所有 Tab 按鈕都靠左對齊 */
+    flex-shrink: 0; 
+}
+
+.tab-nav-btn:hover {
+    color: #2563eb !important; /* 滑過時變藍色 */
+    background: #f9fafb !important; /* 輕微的背景色 */
+}
+
+.tab-nav-btn.active {
+    color: #2563eb !important; /* 選中狀態文字藍色 */
+    border-bottom: 3px solid #2563eb !important; /* 選中狀態藍色粗底線 */
+    background: white !important;
+}
+
+/* ===============================
+   Sidebar 收合時：主畫面撐滿
+   =============================== */
+
+/* Tabler 預設 sidebar 寬度大約 260px */
+.page.sidebar-collapsed .page-wrapper {
+  margin-left: 0 !important;
+}
+
+/* 確保 sidebar 完全不佔空間 */
+.page.sidebar-collapsed > aside {
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden;
+}
+
+/*（可選）滑動動畫，像一般後台 */
+.page > aside,
+.page .page-wrapper {
+  transition: all 0.25s ease;
+}
+
