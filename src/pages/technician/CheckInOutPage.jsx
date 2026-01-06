@@ -8,36 +8,34 @@ import "../../assets/RunCardCreatePage.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-// 內部小型組件：KPI 卡片 (樣式優化，與深藍主題呼應)
+// 內部組件：KPI 卡片 (樣式微調更精簡)
 const StatCard = ({ title, value, color, isActive, onClick }) => (
   <div 
     onClick={onClick}
     style={{
       flex: 1,
-      padding: "15px 20px",
+      padding: "12px 15px",
       background: "#fff",
-      borderRadius: "12px",
-      borderLeft: isActive ? `5px solid ${color}` : "1px solid #e2e8f0", // 改為側邊粗條感
-      boxShadow: isActive ? "0 4px 12px rgba(0, 0, 0, 0.08)" : "0 1px 3px rgba(0,0,0,0.05)",
+      borderRadius: "8px",
+      borderLeft: `4px solid ${color}`,
+      boxShadow: isActive ? "0 4px 12px rgba(0,0,0,0.1)" : "0 1px 3px rgba(0,0,0,0.05)",
       cursor: "pointer",
       transition: "all 0.2s ease",
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      minWidth: "150px"
+      transform: isActive ? "translateY(-2px)" : "none",
+      border: isActive ? `1px solid ${color}` : "1px solid #e2e8f0",
+      borderLeftWidth: "4px"
     }}
   >
-    <div style={{ fontSize: "11px", fontWeight: "700", color: "#94a3b8", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{title}</div>
-    <div style={{ fontSize: "28px", fontWeight: "800", color: color }}>{value}</div>
+    <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase" }}>{title}</div>
+    <div style={{ fontSize: "24px", fontWeight: "800", color: color }}>{value}</div>
   </div>
 );
 
 export default function CheckInOutPage() {
   const [allProjects, setAllProjects] = useState([]); 
   const [selectedId, setSelectedId] = useState(null); 
-  const [filterMode, setFilterMode] = useState("all"); 
+  const [filterMode, setFilterMode] = useState("all");
 
-  // 1. 初始化
   useEffect(() => {
     const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
     setAllProjects(data);
@@ -47,7 +45,6 @@ export default function CheckInOutPage() {
     }
   }, []);
 
-  // 2. 統計
   const stats = useMemo(() => {
     const counts = { all: 0, ongoing: 0, pending: 0, completed: 0 };
     allProjects.forEach(p => {
@@ -60,12 +57,10 @@ export default function CheckInOutPage() {
     return counts;
   }, [allProjects]);
 
-  // 3. 取得當前專案
   const currentProject = useMemo(() => {
     return allProjects.find(p => p.id === selectedId);
   }, [allProjects, selectedId]);
 
-  // 4. 過濾清單
   const taskList = useMemo(() => {
     return allProjects.filter(p => {
       const status = p.status || "Init";
@@ -76,7 +71,6 @@ export default function CheckInOutPage() {
     });
   }, [allProjects, filterMode]);
 
-  // 5. 更新邏輯 (保持不變)
   const syncUpdate = useCallback((lotId, stressId, rid, patch) => {
     setAllProjects(prevAll => {
       const updated = prevAll.map(p => {
@@ -101,172 +95,141 @@ export default function CheckInOutPage() {
     });
   }, [selectedId]);
 
-  // 6. 欄位定義 (配色改為深藍專業風)
   const columnDefs = useMemo(() => {
     const isProjectCompleted = currentProject?.status === "completed";
-    const baseColDef = { 
-      resizable: true, 
-      sortable: true,
-      cellStyle: { borderRight: '1px solid #eef2f6', fontSize: '12px' } 
-    };
     const canEdit = !isProjectCompleted;
 
     return [
-      { ...baseColDef, headerName: "Stress", field: "stress", width: 100, cellStyle: { ...baseColDef.cellStyle, fontWeight: 'bold', color: '#1e3a8a' } },
-      { ...baseColDef, headerName: "Type", field: "type", width: 80 },
-      { ...baseColDef, headerName: "Operation", field: "operation", width: 110 },
-      { ...baseColDef, headerName: "Condition", field: "condition", width: 130 },
-      { ...baseColDef, headerName: "Qty", field: "sampleSize", width: 80, editable: canEdit, cellClass: canEdit ? 'editable-cell' : '' },
-      { ...baseColDef, headerName: "Program", field: "testProgram", width: 120, editable: canEdit, cellClass: canEdit ? 'editable-cell' : '' },
-      { ...baseColDef, headerName: "Script", field: "testScript", width: 120, editable: canEdit, cellClass: canEdit ? 'editable-cell' : '' },
+      { headerName: "Stress", field: "stress", width: 90, pinned: 'left', editable: canEdit, cellStyle: { background: '#f1f5f9', fontWeight: 'bold', color: '#0f172a' }, cellClass: canEdit ? 'editable-cell' : '' },
+      { headerName: "Type", field: "type", width: 80, editable: canEdit, cellClass: canEdit ? 'editable-cell' : '' },
+      { headerName: "Operation", field: "operation", width: 130, editable: canEdit, cellClass: canEdit ? 'editable-cell' : '' },
+      { headerName: "Condition", field: "condition", width: 140, editable: canEdit, cellClass: canEdit ? 'editable-cell' : '' },
       { 
-        ...baseColDef,
-        headerName: "Check-in", 
+        headerName: "Sample Size", 
+        field: "sampleSize", 
+        width: 110, 
+        editable: canEdit,
+        cellStyle: { fontWeight: 'bold' } 
+      },
+      { headerName: "Program", field: "program", width: 110, editable: canEdit, cellClass: canEdit ? 'editable-cell' : '' },
+      { headerName: "Test Program", field: "testProgram", width: 130, editable: canEdit, cellClass: canEdit ? 'editable-cell' : '' },
+      { headerName: "Test Script", field: "testScript", width: 130, editable: canEdit, cellClass: canEdit ? 'editable-cell' : '' },
+      { 
+        headerName: "CHECK-IN", 
         field: "startTime", 
         width: 150,
+        pinned: 'right',
         cellRenderer: (p) => (
           <button 
-            disabled={!!p.value || isProjectCompleted}
-            className={`btn-action ${p.value ? 'btn-done' : 'btn-go'}`}
+            disabled={!!p.value}
+            className={`op-button ${p.value ? 'done' : 'start'}`}
             onClick={() => syncUpdate(p.context.lotId, p.context.stressId, p.data._rid, { startTime: new Date().toLocaleString([], {hour12:false}) })}
           >
-            {p.value ? `IN: ${p.value.split(',')[1] || p.value}` : "START"}
+            {p.value ? p.value : "START"}
           </button>
         )
       },
       { 
-        ...baseColDef,
-        headerName: "Check-out", 
+        headerName: "CHECK-OUT", 
         field: "endTime", 
         width: 150,
+        pinned: 'right',
         cellRenderer: (p) => (
           <button 
-            disabled={!p.data.startTime || !!p.value || isProjectCompleted}
-            className={`btn-action ${ (p.data.startTime && !p.value) ? 'btn-ready' : 'btn-wait' }`}
+            disabled={!p.data.startTime || !!p.value}
+            className={`op-button ${ (p.data.startTime && !p.value) ? 'finish' : 'waiting' }`}
             onClick={() => syncUpdate(p.context.lotId, p.context.stressId, p.data._rid, { endTime: new Date().toLocaleString([], {hour12:false}) })}
           >
-            {p.value ? `OUT: ${p.value.split(',')[1] || p.value}` : "FINISH"}
+            {p.value ? p.value : "FINISH"}
           </button>
         )
       },
-      { ...baseColDef, headerName: "Note / Remark", field: "execNote", editable: !isProjectCompleted, flex: 1, minWidth: 150, cellClass: 'editable-cell' },
+      { headerName: "Remark / Note", field: "execNote", editable: canEdit, width: 140, cellClass: canEdit ? 'editable-cell' : '' },
     ];
   }, [syncUpdate, currentProject]);
 
   return (
-    <div className="checkinout-container" style={{ padding: '24px', background: '#f8fafc', minHeight: '100vh', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
+    <div style={{ padding: '20px', background: '#fff', minHeight: '100vh', fontFamily: 'system-ui' }}>
       
-      {/* 標題與 KPI 區塊整合 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div>
-          <h2 style={{ margin: 0, fontWeight: "800", color: "#1e293b", fontSize: "24px" }}>RELIABILITY TRACKING</h2>
-          <p style={{ margin: 0, color: "#94a3b8", fontSize: "13px" }}>Real-time Lab Test Operation & Traceability System</p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', width: '60%' }}>
-          <StatCard title="Total" value={stats.all} color="#1e3a8a" isActive={filterMode === 'all'} onClick={() => setFilterMode('all')} />
-          <StatCard title="Completed" value={stats.completed} color="#10b981" isActive={filterMode === 'completed'} onClick={() => setFilterMode('completed')} />
-          <StatCard title="Running" value={stats.ongoing} color="#3b82f6" isActive={filterMode === 'ongoing'} onClick={() => setFilterMode('ongoing')} />
-          <StatCard title="Initial" value={stats.pending} color="#94a3b8" isActive={filterMode === 'pending'} onClick={() => setFilterMode('pending')} />
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: '24px' }}>
+      <div style={{ display: 'flex', gap: '20px' }}>
         
-        {/* 左側任務清單 (寬度加寬一點) */}
-        <div style={{ width: '300px', flexShrink: 0 }}>
-          <div style={{ height: '78vh', display: 'flex', flexDirection: 'column', borderRadius: '16px', background: '#fff', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-            <div style={{ padding: '16px', background: '#1e3a8a', color: 'white' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: 0 }}>LOT QUEUE</h3>
+        {/* 左側任務清單 (縮小寬度參考 Runcard 介面) */}
+        <div style={{ width: '260px', flexShrink: 0 }}>
+          <div style={{ background: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', height: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: '#1e3a8a', padding: '12px', color: '#fff', fontSize: '13px', fontWeight: 'bold' }}>WORK ORDER LIST</div>
+            {/* 篩選按鈕 */}
+            <div style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+              <button onClick={() => setFilterMode('all')} style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold', borderRadius: '4px', border: 'none', cursor: 'pointer', background: filterMode === 'all' ? '#1e3a8a' : '#f1f5f9', color: filterMode === 'all' ? '#fff' : '#64748b', transition: 'all 0.2s' }}>All ({stats.all})</button>
+              <button onClick={() => setFilterMode('ongoing')} style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold', borderRadius: '4px', border: 'none', cursor: 'pointer', background: filterMode === 'ongoing' ? '#f59e0b' : '#f1f5f9', color: filterMode === 'ongoing' ? '#fff' : '#64748b', transition: 'all 0.2s' }}>Active ({stats.ongoing})</button>
+              <button onClick={() => setFilterMode('completed')} style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold', borderRadius: '4px', border: 'none', cursor: 'pointer', background: filterMode === 'completed' ? '#10b981' : '#f1f5f9', color: filterMode === 'completed' ? '#fff' : '#64748b', transition: 'all 0.2s' }}>Done ({stats.completed})</button>
+              <button onClick={() => setFilterMode('pending')} style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold', borderRadius: '4px', border: 'none', cursor: 'pointer', background: filterMode === 'pending' ? '#94a3b8' : '#f1f5f9', color: filterMode === 'pending' ? '#fff' : '#64748b', transition: 'all 0.2s' }}>Init ({stats.pending})</button>
             </div>
-            
-            <div style={{ flexGrow: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {taskList.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#cbd5e1', marginTop: '40px' }}>No records found</div>
-              ) : (
-                taskList.map(p => (
-                  <div 
-                    key={p.id} 
-                    onClick={() => setSelectedId(p.id)}
-                    style={{
-                      padding: '14px', borderRadius: '10px', cursor: 'pointer',
-                      border: selectedId === p.id ? '2px solid #1e3a8a' : '1px solid #f1f5f9',
-                      background: selectedId === p.id ? '#eff6ff' : '#f8fafc',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div style={{ fontWeight: '800', fontSize: '14px', color: selectedId === p.id ? '#1e3a8a' : '#334155' }}>{p.header["Product ID"]}</div>
-                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Lot: {p.lots[0]?.lotId || "N/A"}</div>
-                    <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                       <span style={{ 
-                         fontSize: '10px', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold',
-                         background: p.status === 'completed' ? '#d1fae5' : (p.status === 'in-process' ? '#dbeafe' : '#f1f5f9'),
-                         color: p.status === 'completed' ? '#065f46' : (p.status === 'in-process' ? '#1e40af' : '#475569')
-                       }}>
-                         {p.status?.toUpperCase() || 'INIT'}
-                       </span>
-                       <span style={{ fontSize: '10px', color: '#cbd5e1' }}>#{p.id.slice(-4)}</span>
-                    </div>
+            <div style={{ flexGrow: 1, overflowY: 'auto', padding: '10px' }}>
+              {taskList.map(p => (
+                <div 
+                  key={p.id} 
+                  onClick={() => setSelectedId(p.id)}
+                  style={{
+                    padding: '12px', borderRadius: '6px', cursor: 'pointer', marginBottom: '8px',
+                    border: selectedId === p.id ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                    background: selectedId === p.id ? '#eff6ff' : '#fff',
+                  }}
+                >
+                  <div style={{ fontWeight: '800', color: '#1e293b' }}>{p.header["Product ID"]}</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Status: {p.status || "Init"}</div>
+                  {/* 進度條簡示 */}
+                  <div style={{ width: '100%', height: '4px', background: '#e2e8f0', marginTop: '8px', borderRadius: '2px' }}>
+                    <div style={{ width: p.status === 'completed' ? '100%' : (p.status === 'in-process' ? '50%' : '0%'), height: '100%', background: '#2563eb', borderRadius: '2px' }} />
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* 右側執行面板 */}
+        {/* 右側主操作面板 */}
         <div style={{ flexGrow: 1 }}>
           {!currentProject ? (
-            <div style={{ background: '#fff', borderRadius: '16px', textAlign: 'center', padding: '120px', color: '#94a3b8', border: '2px dashed #e2e8f0' }}>
-              <h3>Select a project to begin operation</h3>
-            </div>
+            <div style={{ background: '#fff', padding: '50px', textAlign: 'center', borderRadius: '8px' }}>Select a project to begin</div>
           ) : (
             <>
-              {/* 重點資訊 Banner */}
-              <div style={{ padding: '20px 24px', marginBottom: '20px', background: '#1e3a8a', borderRadius: '16px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 12px rgba(30, 58, 138, 0.2)' }}>
-                <div>
-                  <div style={{ fontSize: '12px', opacity: 0.8 }}>Current Active Project</div>
-                  <div style={{ fontWeight: '800', fontSize: '24px' }}>{currentProject.header["Product ID"]}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '12px', opacity: 0.8 }}>Status</div>
-                  <div style={{ fontWeight: '700', fontSize: '18px' }}>{currentProject.status?.toUpperCase()}</div>
+              {/* 工程師填寫的基本資料列 */}
+              <div style={{ background: '#fff', padding: '15px 20px', borderRadius: '8px', marginBottom: '15px', borderLeft: '5px solid #1e3a8a', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                <div style={{ display: 'flex', gap: '50px', flexWrap: 'wrap' }}>
+                  {Object.entries(currentProject.header).map(([k, v]) => (
+                    <div key={k}>
+                      <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>{k}</div>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#334155', marginTop: '3px' }}>{v || "-"}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* 詳細屬性表 */}
-              <div style={{ background: '#fff', borderRadius: '16px', marginBottom: '20px', padding: '20px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
-                {Object.entries(currentProject.header).slice(0, 10).map(([k, v]) => (
-                  <div key={k} style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
-                    <label style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', display: 'block' }}>{k}</label>
-                    <span style={{ fontWeight: '600', fontSize: '13px', color: '#1e293b' }}>{v || "-"}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Lots 表格區 */}
+              {/* Lot 操作區 */}
               {currentProject.lots.map(lot => (
-                <div key={lot.id} style={{ marginBottom: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', background: '#fff', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-                  <div style={{ background: '#f8fafc', padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#1e3a8a', fontWeight: '800', fontSize: '15px' }}>RUN CARD: {lot.lotId}</span>
-                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>Created: {currentProject.header["Created Date"] || "N/A"}</span>
+                <div key={lot.id} style={{ background: '#fff', borderRadius: '8px', marginBottom: '20px', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
+                  <div style={{ background: '#f8fafc', padding: '10px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <span style={{ background: '#1e3a8a', color: '#fff', padding: '2px 10px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>LOT</span>
+                    <span style={{ fontWeight: '800', color: '#1e3a8a' }}>{lot.lotId}</span>
                   </div>
                   
-                  {lot.stresses.map(s => (
-                    <div key={s.id} className="ag-theme-alpine digital-runcard" style={{ width: '100%' }}>
-                      <AgGridReact
-                        rowData={s.rowData}
-                        columnDefs={columnDefs}
-                        domLayout="autoHeight"
-                        context={{ lotId: lot.id, stressId: s.id }}
-                        headerHeight={42}
-                        rowHeight={48}
-                        singleClickEdit={true}
-                        stopEditingWhenCellsLoseFocus={true}
-                        onCellValueChanged={(params) => {
-                          syncUpdate(lot.id, s.id, params.data._rid, { [params.column.colId]: params.newValue });
-                        }}
-                      />
-                    </div>
+                  {lot.stresses.map((s, index) => (
+                    <React.Fragment key={s.id}>
+                      <div className="ag-theme-alpine runcard-grid">
+                        <AgGridReact
+                          rowData={s.rowData}
+                          columnDefs={columnDefs}
+                          domLayout="autoHeight"
+                          context={{ lotId: lot.id, stressId: s.id }}
+                          headerHeight={48}
+                          rowHeight={52}
+                          onCellValueChanged={(params) => {
+                            syncUpdate(lot.id, s.id, params.data._rid, { [params.column.colId]: params.newValue });
+                          }}
+                        />
+                      </div>
+                      {index < lot.stresses.length - 1 && <hr style={{ border: '1px solid black', margin: '10px 0' }} />}
+                    </React.Fragment>
                   ))}
                 </div>
               ))}
@@ -276,40 +239,103 @@ export default function CheckInOutPage() {
       </div>
 
       <style>{`
-        /* 深藍色專業標頭 */
-        .digital-runcard .ag-header { 
-          background-color: #1e3a8a !important; 
-          border-bottom: none !important; 
+        /* 表格背景統一白色 */
+        .runcard-grid {
+          background-color: #ffffff !important;
         }
-        .digital-runcard .ag-header-cell-label { 
-          color: #ffffff !important; 
-          font-weight: 600 !important; 
-          font-size: 11px !important; 
-          letter-spacing: 0.5px;
+        .ag-theme-alpine {
+          background-color: #ffffff !important;
         }
-        .digital-runcard .ag-root-wrapper { border: none !important; }
         
-        /* 單元格樣式 */
-        .editable-cell { background-color: #fffef0 !important; cursor: cell !important; }
-        .ag-cell-focus { border: 2px solid #3b82f6 !important; }
-        
-        /* 自定義按鈕 */
-        .btn-action {
-          width: 100%; height: 32px; border: none; border-radius: 6px; 
-          font-weight: 800; font-size: 10px; cursor: pointer; transition: all 0.2s;
+        /* 表格標頭樣式 - 黑框，無藍底 */
+        .runcard-grid .ag-header {
+          background-color: #ffffff !important;
+          border-bottom: 2px solid #000000 !important;
         }
-        .btn-go { background: #3b82f6; color: white; }
-        .btn-go:hover { background: #2563eb; }
-        .btn-done { background: #f1f5f9; color: #64748b; cursor: default; }
+        .runcard-grid .ag-header-cell {
+          border-right: 1px solid #000000 !important;
+        }
+        .runcard-grid .ag-header-cell-label {
+          color: #000000 !important;
+          font-weight: 700 !important;
+          font-size: 11px !important;
+          justify-content: center;
+        }
         
-        .btn-ready { background: #10b981; color: white; }
-        .btn-ready:hover { background: #059669; }
-        .btn-wait { background: #f8fafc; color: #cbd5e1; cursor: not-allowed; border: 1px solid #f1f5f9; }
+        /* 表格格線 */
+        .runcard-grid .ag-cell {
+          border-right: 1px solid #000000 !important;
+          border-bottom: 1px solid #000000 !important;
+        }
+        .runcard-grid .ag-row {
+          border-bottom: 1px solid #000000 !important;
+        }
+        
+        /* 按鈕樣式 */
+        .op-button {
+          width: 100%;
+          height: 40px;
+          border: none;
+          border-radius: 6px;
+          font-weight: 800;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s;
+          padding: 0;
+        }
+        .op-button.start {
+          background: #2563eb;
+          color: white;
+          box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+        }
+        .op-button.start:hover { 
+          background: #1d4ed8; 
+          transform: translateY(-1px);
+        }
+        
+        .op-button.finish {
+          background: #10b981;
+          color: white;
+          box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+        }
+        .op-button.finish:hover { 
+          background: #059669;
+          transform: translateY(-1px);
+        }
+        
+        .op-button.done {
+          background: #e2e8f0;
+          color: #64748b;
+          cursor: default;
+          font-size: 12px;
+        }
+        .op-button.waiting {
+          background: #f1f5f9;
+          color: #cbd5e1;
+          border: 1px dashed #cbd5e1;
+          cursor: not-allowed;
+        }
 
-        /* 滾動條優化 */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; borderRadius: 3px; }
+        /* 編輯單元格 */
+        .editable-cell {
+          background-color: #f9fafb !important;
+        }
+
+        .ag-row {
+          height: 56px !important;
+        }
+        
+        .ag-row:hover {
+          background-color: #f0f9ff !important;
+        }
+
+        /* 釘住列背景 */
+        .ag-pinned-left-cols-container {
+          background-color: #fafbfc !important;
+        }
+        .ag-pinned-right-cols-container {
+          background-color: #fafbfc !important;
+        }
       `}</style>
     </div>
   );

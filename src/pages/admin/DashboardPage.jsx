@@ -92,7 +92,7 @@ export default function DashboardPage({ setPage }) {
 
   return (
     <div style={{ padding: "20px", maxWidth: "1200px", margin: "0 auto", fontFamily: "'Inter', sans-serif" }}>
-      <h2 style={{ marginBottom: "20px", color: "#1e293b" }}>📊 System Dashboard</h2>
+
 
       {/* KPI Section */}
       <div style={{ display: "flex", gap: "15px", flexWrap: "wrap", marginBottom: "30px" }}>

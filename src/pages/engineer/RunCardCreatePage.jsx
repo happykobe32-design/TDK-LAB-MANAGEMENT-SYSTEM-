@@ -234,13 +234,6 @@ export default function RunCardFormPage() {
 
   return (
     <div className="form-page-container">
-      <div className="page-title-wrapper">
-        <div className="page-title-card">
-          <div className="page-title-bar" />
-          <div className="page-title-text">Create Project</div>
-        </div>
-      </div>
-
       <div className="prof-card">
         <div className="header-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "10px" }}>
           {Object.keys(header).map((k) => (

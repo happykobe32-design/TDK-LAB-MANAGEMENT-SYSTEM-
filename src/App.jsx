@@ -6,6 +6,7 @@ import RunCardListPage from "./pages/shared/RunCardListPage";
 import RunCardEditPage from "./pages/shared/RunCardEditPage";
 import RunCardFormPage from "./pages/engineer/RunCardCreatePage";
 import CheckInOutPage from "./pages/technician/CheckInOutPage";
+import PageLayout from "./components/PageLayout";
 
 // ==================================================
 // 系統常數(人員分三種)
@@ -269,7 +270,7 @@ function AppContent() {
         }}
       >
         <div className="container-fluid">
-          <h1 className="navbar-brand fw-bold mb-3" style={{ color: "#ffffff", fontSize: "1.5rem" }}>選單</h1>
+          <h1 className="navbar-brand fw-bold mb-3" style={{ color: "#ffffff", fontSize: "1.5rem" }}>Settings</h1>
           <ul className="navbar-nav pt-lg-3">
             {isAdmin && (
               <li className="nav-item">
@@ -342,14 +343,14 @@ function AppContent() {
         <div 
           className="page-header" 
           style={{ 
-            background: "#1e3a8a", // 使用深藍色
-            padding: "12px 0",
-            color: "#ffffff",      // 文字為白色
+            background: "#1e3a8a",
+            padding: "12px 20px",
+            color: "#ffffff",
             boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-            marginBottom: "1rem"
+            margin: 0
           }}
         >
-          <div className="container-xl d-flex align-items-center">
+          <div className="d-flex align-items-center">
             {/* 1. 左側漢堡選單按鈕 - 改為白色 */}
             <button
               className="navbar-toggler me-3 d-block"
@@ -359,15 +360,15 @@ function AppContent() {
               ☰
             </button>
 
-            {/* 2. 中央標題區塊 */}
-            <div className="flex-grow-1 text-center">
-              <h2 className="page-title" style={{ margin: 0, color: "#ffffff", fontWeight: "700", letterSpacing: "1px" }}>
+            {/* 2. 靠左標題區塊 */}
+            <div>
+              <h2 className="page-title" style={{ margin: 0, color: "#ffffff", fontWeight: "700", letterSpacing: "1px", fontSize: "1.25rem" }}>
                 LAB MANAGEMENT SYSTEM
               </h2>
             </div>
 
             {/* 3. 右側使用者資訊 - 文字改為白色以利閱讀 */}
-            <div className="ms-3 position-relative" ref={userMenuRef}>
+            <div className="ms-auto position-relative" ref={userMenuRef}>
               <button
                 className="btn btn-link d-flex align-items-center text-decoration-none"
                 style={{ color: "#ffffff", padding: 0 }} 
@@ -398,19 +399,61 @@ function AppContent() {
           </div>
         </div>
 
-        <div className="page-body">
-          <div className="container-xl">
-            <Routes>
-              {/* 重點：這裡確保 DashboardPage 收到 navigate 或具備切換頁面的能力 */}
-              <Route path="/dashboard" element={isAdmin ? <DashboardPage runCards={runCards} setPage={navigate} /> : <Navigate to="/list" />} />
-              <Route path="/list" element={(isAdmin || isEngineer) ? <RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /> : <Navigate to="/checkinout" />} />
-              <Route path="/create" element={(isAdmin || isEngineer) ? <RunCardFormPage handleFinalSubmit={handleFinalSubmit} /> : <Navigate to="/list" />} />
-              <Route path="/edit" element={<RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} />} />
-              <Route path="/checkinout" element={(isAdmin || isTechnician) ? <CheckInOutPage handleCheckInOutProp={handleCheckInOut} /> : <Navigate to="/list" />} />
+        <div className="page-body" style={{ padding: 0, margin: 0 }}>
+          <Routes>
+            {/* Dashboard */}
+            <Route 
+              path="/dashboard" 
+              element={isAdmin ? (
+                <PageLayout title="Dashboard" icon="📊">
+                  <DashboardPage runCards={runCards} setPage={navigate} />
+                </PageLayout>
+              ) : <Navigate to="/list" />} 
+            />
+            
+            {/* Run Card List */}
+            <Route 
+              path="/list" 
+              element={(isAdmin || isEngineer) ? (
+                <PageLayout title="Project View / Search" icon="🔍">
+                  <RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} />
+                </PageLayout>
+              ) : <Navigate to="/checkinout" />} 
+            />
+            
+            {/* Create Project */}
+            <Route 
+              path="/create" 
+              element={(isAdmin || isEngineer) ? (
+                <PageLayout title="Create Project" icon="➕">
+                  <RunCardFormPage handleFinalSubmit={handleFinalSubmit} />
+                </PageLayout>
+              ) : <Navigate to="/list" />} 
+            />
+            
+            {/* Edit Project */}
+            <Route 
+              path="/edit" 
+              element={(
+                <PageLayout title="Edit Project" icon="✏️">
+                  <RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} />
+                </PageLayout>
+              )} 
+            />
+            
+            {/* Check In / Out */}
+            <Route 
+              path="/checkinout" 
+              element={(isAdmin || isTechnician) ? (
+                <PageLayout title="Check In / Out" icon="⏱️">
+                  <CheckInOutPage handleCheckInOutProp={handleCheckInOut} />
+                  </PageLayout>
+                ) : <Navigate to="/list" />} 
+              />
+              
               {/* 預設路由 */}
               <Route path="/" element={<Navigate to={isAdmin ? "/dashboard" : (isEngineer ? "/create" : "/checkinout")} />} />
             </Routes>
-          </div>
         </div>
       </div>
     </div>

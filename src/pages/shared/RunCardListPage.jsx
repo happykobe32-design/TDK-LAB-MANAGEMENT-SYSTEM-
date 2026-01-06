@@ -92,21 +92,6 @@ export default function ViewSearchPage() {
       
       {/* 左側表格區：當 selectedLot 為 null 時，flex 為 1 會佔滿全寬 */}
       <div style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <h2 style={{ margin: 0, color: '#1e293b', fontSize: '20px' }}>View / Search</h2>
-            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-              {selectedLot ? `Viewing Lot: ${selectedLot.lotId}` : "Click a row to view details"}
-            </span>
-          </div>
-          <input
-            type="text"
-            placeholder="Search Project or Lot..."
-            style={{ padding: '8px 12px', width: '280px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }}
-            onChange={(e) => setSearchText(e.target.value)}
-          />
-        </div>
-
         <div className="ag-theme-alpine compact-grid" style={{ flex: 1, width: '100%' }}>
           <AgGridReact
             rowData={allProjects}
