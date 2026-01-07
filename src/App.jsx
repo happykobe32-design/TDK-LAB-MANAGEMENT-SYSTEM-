@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 // 引入 React Router 相關組件
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import DashboardPage from "./pages/admin/DashboardPage";
+import PermissionMaintenancePage from "./pages/admin/PermissionMaintenancePage";
+import ConfigurationMaintenancePage from "./pages/admin/ConfigurationMaintenancePage";
 import RunCardListPage from "./pages/shared/RunCardListPage";
 import RunCardEditPage from "./pages/shared/RunCardEditPage";
 import RunCardFormPage from "./pages/engineer/RunCardCreatePage";
@@ -281,7 +283,35 @@ function AppContent() {
                     setSidebarOpen(false);
                   }}
                 >
-                  Dashboard
+                  📊Dashboard
+                </button>
+              </li>
+            )}
+
+            {isAdmin && (
+              <li className="nav-item">
+                <button
+                  className="nav-link btn w-100 text-start"
+                  onClick={() => {
+                    navigate("/permission");
+                    setSidebarOpen(false);
+                  }}
+                >
+                  🔐 Permission Maintenance
+                </button>
+              </li>
+            )}
+
+            {isAdmin && (
+              <li className="nav-item">
+                <button
+                  className="nav-link btn w-100 text-start"
+                  onClick={() => {
+                    navigate("/config");
+                    setSidebarOpen(false);
+                  }}
+                >
+                  ⚙️ Configuration Maintenance
                 </button>
               </li>
             )}
@@ -295,7 +325,7 @@ function AppContent() {
                     setSidebarOpen(false);
                   }}
                 >
-                  Project View/Search
+                  🔍Project View/Search
                 </button>
               </li>
             )}
@@ -309,7 +339,7 @@ function AppContent() {
                     setSidebarOpen(false);
                   }}
                 >
-                  Create Project
+                  ➕Create Project
                 </button>
               </li>
             )}
@@ -323,7 +353,7 @@ function AppContent() {
                     setSidebarOpen(false);
                   }}
                 >
-                  Check In / Out
+                  ⏱️Check In / Out
                 </button>
               </li>
             )}
@@ -409,6 +439,26 @@ function AppContent() {
                   <DashboardPage runCards={runCards} setPage={navigate} />
                 </PageLayout>
               ) : <Navigate to="/list" />} 
+            />
+            
+            {/* Permission Maintenance */}
+            <Route 
+              path="/permission" 
+              element={isAdmin ? (
+                <PageLayout title="Permission Maintenance" icon="🔐">
+                  <PermissionMaintenancePage />
+                </PageLayout>
+              ) : <Navigate to="/dashboard" />} 
+            />
+            
+            {/* Configuration Maintenance */}
+            <Route 
+              path="/config" 
+              element={isAdmin ? (
+                <PageLayout title="Configuration Maintenance" icon="⚙️">
+                  <ConfigurationMaintenancePage />
+                </PageLayout>
+              ) : <Navigate to="/dashboard" />} 
             />
             
             {/* Run Card List */}

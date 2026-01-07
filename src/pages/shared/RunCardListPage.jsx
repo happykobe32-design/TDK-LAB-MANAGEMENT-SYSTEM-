@@ -6,7 +6,7 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-export default function ViewSearchPage() {
+export default function ViewSearchPage({ userRole, handleEdit, handleDelete }) {
   const [allProjects, setAllProjects] = useState([]);
   const [searchText, setSearchText] = useState("");
   // 控制側邊欄的狀態，初始值為 null，保證一開始不會渲染右側元件
@@ -42,49 +42,97 @@ export default function ViewSearchPage() {
     setAllProjects(masterRows);
   }, []);
 
-  const columnDefs = useMemo(() => [
-    { 
-      headerName: "Status", 
-      field: "status", 
-      width: 110,
-      cellRenderer: (p) => {
-        const colors = {
-          'completed': { bg: '#d1fae5', text: '#065f46', label: 'COMPLETED' },
-          'in-process': { bg: '#ffedd5', text: '#9a3412', label: 'IN-PROCESS' },
-          'Init': { bg: '#f1f5f9', text: '#64748b', label: 'INIT' }
-        };
-        const config = colors[p.value] || colors['Init'];
-        return (
-          <span style={{ backgroundColor: config.bg, color: config.text, padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>
-            {config.label}
-          </span>
-        );
+  const columnDefs = useMemo(() => {
+    const cols = [
+      { 
+        headerName: "Status", 
+        field: "status", 
+        width: 95,
+        cellRenderer: (p) => {
+          const colors = {
+            'completed': { bg: '#d1fae5', text: '#065f46', label: 'COMPLETED' },
+            'in-process': { bg: '#ffedd5', text: '#9a3412', label: 'IN-PROCESS' },
+            'Init': { bg: '#f1f5f9', text: '#64748b', label: 'INIT' }
+          };
+          const config = colors[p.value] || colors['Init'];
+          return (
+            <span style={{ backgroundColor: config.bg, color: config.text, padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>
+              {config.label}
+            </span>
+          );
+        }
+      },
+      { headerName: "Product ID", field: "projectId", width: 100 },
+      { headerName: "Lot ID", field: "lotId", width: 100 },
+      { headerName: "Owner", field: "owner", width: 80 },
+      { 
+        headerName: "Created Date", 
+        field: "createdDate", 
+        width: 130 
+      },
+      { 
+        headerName: "Action", 
+        width: 90,
+        cellRenderer: (params) => (
+          <button
+            className="detail-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedLot(params.data);
+            }}
+          >
+            Details ➜
+          </button>
+        )
       }
-    },
-    { headerName: "Product ID", field: "projectId", width: 120 },
-    { headerName: "Lot ID", field: "lotId", width: 120 },
-    { headerName: "Owner", field: "owner", width: 90 },
-    { 
-      headerName: "Progress", 
-      valueGetter: p => `${p.data.completedSteps} / ${p.data.totalSteps}`,
-      width: 90,
-    },
-    { 
-      headerName: "Created Date", 
-      field: "createdDate", 
-      width: 140 
-    },
-    { 
-      headerName: "Action", 
-      width: 100,
-      cellRenderer: () => (
-        <span className="detail-link">Details ➜</span>
-      )
+    ];
+
+    // Admin 用户添加编辑和删除按钮
+    if (userRole === "admin") {
+      cols.push({
+        headerName: "Manage",
+        width: 120,
+        cellRenderer: (params) => (
+          <div style={{ display: 'flex', gap: '5px' }}>
+            <button
+              className="btn btn-sm btn-info"
+              style={{ padding: '2px 8px', fontSize: '11px' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEdit(params.data.projectId);
+              }}
+              title="Edit project"
+            >
+              ✏️ Edit
+            </button>
+            <button
+              className="btn btn-sm btn-danger"
+              style={{ padding: '2px 8px', fontSize: '11px' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm(`确认删除项目 ${params.data.projectId}?`)) {
+                  handleDelete(params.data.projectId);
+                  // 重新加载列表
+                  const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
+                  const updatedData = data.filter(proj => proj.header["Product ID"] !== params.data.projectId);
+                  localStorage.setItem("all_projects", JSON.stringify(updatedData));
+                  window.location.reload();
+                }
+              }}
+              title="Delete project"
+            >
+              🗑️ Delete
+            </button>
+          </div>
+        )
+      });
     }
-  ], []);
+
+    return cols;
+  }, [userRole, handleEdit, handleDelete, setSelectedLot]);
 
   const onRowClicked = (event) => {
-    setSelectedLot(event.data);
+    // 移除此功能，仅通过 Details 按钮打开
   };
 
   return (
@@ -99,11 +147,9 @@ export default function ViewSearchPage() {
             defaultColDef={{ sortable: true, resizable: true, filter: true, flex: 1 }}
             quickFilterText={searchText}
             pagination={true}
-            paginationPageSize={20}
-            rowHeight={36}
-            headerHeight={40}
-            onRowClicked={onRowClicked}
-            rowSelection="single"
+            paginationPageSize={25}
+            rowHeight={32}
+            headerHeight={36}
           />
         </div>
       </div>
@@ -115,6 +161,9 @@ export default function ViewSearchPage() {
             <div>
               <div style={{ fontSize: '11px', opacity: 0.8 }}>LOT DETAILS</div>
               <h3 style={{ margin: 0, fontSize: '16px' }}>{selectedLot.lotId}</h3>
+              <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '4px' }}>Product: {selectedLot.projectId}</div>
+              <div style={{ fontSize: '10px', opacity: 0.7 }}>Owner: {selectedLot.owner}</div>
+              <div style={{ fontSize: '10px', opacity: 0.7 }}>Created: {selectedLot.createdDate}</div>
             </div>
             <button className="close-btn" onClick={() => setSelectedLot(null)}>×</button>
           </div>
@@ -166,6 +215,20 @@ export default function ViewSearchPage() {
           font-size: 11px;
           font-weight: bold;
           cursor: pointer;
+        }
+        .detail-btn {
+          background: #3b82f6;
+          color: white;
+          border: none;
+          padding: 4px 10px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+        .detail-btn:hover {
+          background: #2563eb;
         }
 
         /* 側邊欄樣式 */
