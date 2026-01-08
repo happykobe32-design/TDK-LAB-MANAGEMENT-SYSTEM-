@@ -13,12 +13,18 @@ export default function CheckInOutPage() {
   const [filterMode, setFilterMode] = useState("all");
   const [activeLotTab, setActiveLotTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [configMaster, setConfigMaster] = useState(null); // 新增：存儲配置資料以供轉換 ID
 
   useEffect(() => {
+    // 讀取專案資料
     const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
     setAllProjects(data);
+    
+    // 讀取配置資料（用於將 Family ID 轉為 Name）
+    const config = JSON.parse(localStorage.getItem("config_master") || "null");
+    setConfigMaster(config);
+
     if (data.length > 0) {
-      // 優先選中 In-process，其次選 Init
       const firstActive = data.find(p => p.status === "in-process") || data.find(p => p.status === "Init");
       setSelectedId(firstActive ? firstActive.id : data[0].id);
     }
@@ -28,7 +34,16 @@ export default function CheckInOutPage() {
     setActiveLotTab(0);
   }, [selectedId]);
 
-  // 計算左側過濾器的數量
+  // 新增：轉換 ID 為名稱的工具函數
+  const getDisplayName = (key, value) => {
+    if (!value) return "-";
+    if (key === "Project Family" && configMaster?.productFamilies) {
+      const family = configMaster.productFamilies.find(f => f.id === value);
+      return family ? family.name : value;
+    }
+    return value;
+  };
+
   const stats = useMemo(() => {
     const counts = { all: 0, ongoing: 0, pending: 0 };
     allProjects.forEach(p => {
@@ -46,7 +61,6 @@ export default function CheckInOutPage() {
     return allProjects.find(p => p.id === selectedId);
   }, [allProjects, selectedId]);
 
-  // 1. 修正過濾邏輯：確保包含 Init
   const taskList = useMemo(() => {
     return allProjects.filter(p => {
       const status = p.status || "Init";
@@ -57,7 +71,6 @@ export default function CheckInOutPage() {
     }).filter(p => p.header["Product ID"]?.toString().includes(searchQuery));
   }, [allProjects, filterMode, searchQuery]);
 
-  // 計算每個項目的完成進度
   const getProjectProgress = (project) => {
     const allRows = project.lots.flatMap(l => l.stresses.flatMap(s => s.rowData));
     if (allRows.length === 0) return 0;
@@ -102,7 +115,6 @@ export default function CheckInOutPage() {
       { headerName: "Operation", field: "operation", width: 120, editable: canEdit, cellStyle: { display: 'flex', alignItems: 'center' } },
       { headerName: "Condition", field: "condition", width: 150, editable: canEdit, cellStyle: { display: 'flex', alignItems: 'center' } },
       { headerName: "Sample Size", field: "sampleSize", width: 100, editable: canEdit, cellStyle: { fontWeight: 'bold', display: 'flex', alignItems: 'center' } },
-      // 補回欄位
       { headerName: "Test Program", field: "testProgram", width: 130, editable: canEdit, cellStyle: { display: 'flex', alignItems: 'center' } },
       { headerName: "Test Script", field: "testScript", width: 130, editable: canEdit, cellStyle: { display: 'flex', alignItems: 'center' } },
       { 
@@ -137,7 +149,6 @@ export default function CheckInOutPage() {
     ];
   }, [syncUpdate, currentProject]);
 
-  // 計算進度條百分比
   const getLotProgress = (lot) => {
     const rows = lot.stresses.flatMap(s => s.rowData);
     if (rows.length === 0) return 0;
@@ -156,7 +167,6 @@ export default function CheckInOutPage() {
           <div style={{ background: '#fff', borderRadius: 0, overflow: 'hidden', boxShadow: 'none', height: '100vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ background: '#1e3a8a', padding: '15px', color: '#fff', fontSize: '13px', fontWeight: 'bold' }}>WORK ORDER LIST</div>
             
-            {/* 搜尋框 */}
             <div style={{ padding: '10px 10px' }}>
               <input 
                 type="text" 
@@ -188,14 +198,12 @@ export default function CheckInOutPage() {
                 <div key={p.id} onClick={() => setSelectedId(p.id)} className={`project-card ${selectedId === p.id ? 'selected' : ''}`}>
                   <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '14px' }}>{p.header["Product ID"]}</div>
                   <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>Status: {p.status || "Init"}</div>
-                  {/* Project 總進度條 */}
                   <div style={{ width: '100%', height: '4px', background: '#e2e8f0', marginTop: '8px', borderRadius: '2px', overflow: 'hidden' }}>
                     <div style={{ 
                         width: `${progress}%`, 
                         height: '100%', background: progress === 100 ? '#10b981' : '#2563eb', transition: 'width 0.3s' 
                     }} />
                   </div>
-                  {/* 顯示完成百分比 */}
                   <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e3a8a', marginTop: '6px' }}>{progress}% Complete</div>
                 </div>
                 );
@@ -210,17 +218,20 @@ export default function CheckInOutPage() {
             <div style={{ background: '#fff', padding: '100px', textAlign: 'center', borderRadius: 0, color: '#94a3b8' }}>Select an active project to begin</div>
           ) : (
             <>
-              {/* Header Info */}
+              {/* Header Info - 這裡修正了 ID 顯示問題 */}
               <div style={{ background: '#fff', padding: '15px 25px', borderRadius: 0, marginBottom: 0, borderLeft: '6px solid #1e3a8a', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', gap: '50px', borderBottom: '1px solid #e2e8f0' }}>
                 {Object.entries(currentProject.header).map(([k, v]) => (
                   <div key={k}>
                     <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>{k}</div>
-                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#334155', marginTop: '2px' }}>{v || "-"}</div>
+                    {/* 使用 getDisplayName 函數來決定顯示內容 */}
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#334155', marginTop: '2px' }}>
+                      {getDisplayName(k, v)}
+                    </div>
                   </div>
                 ))}
               </div>
 
-              {/* LOT Tabs with Progress Bars */}
+              {/* LOT Tabs */}
               <div style={{ display: 'flex', gap: '8px', marginBottom: 0, borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
                 {currentProject.lots.map((lot, idx) => {
                   const progress = getLotProgress(lot);
@@ -233,11 +244,9 @@ export default function CheckInOutPage() {
                         background: activeLotTab === idx ? '#eff6ff' : 'transparent',
                         color: activeLotTab === idx ? '#1e3a8a' : '#64748b',
                         border: 'none',
-                        borderBottom: 'none'
                       }}
                     >
                       <div style={{ fontSize: '13px', fontWeight: 'bold' }}>LOT: {lot.lotId}</div>
-                      {/* 2. 加入 LOT 進度條 */}
                       <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '2px', background: '#e2e8f0' }}>
                         <div style={{ width: `${progress}%`, height: '100%', background: progress === 100 ? '#10b981' : '#2563eb', transition: 'width 0.4s' }} />
                       </div>
@@ -255,6 +264,8 @@ export default function CheckInOutPage() {
                         rowData={s.rowData}
                         columnDefs={columnDefs}
                         domLayout="autoHeight"
+                        rowDragManaged={true}
+                        animateRows={true}
                         context={{ lotId: activeLot.id, stressId: s.id }}
                         headerHeight={42}
                         rowHeight={50}
@@ -277,7 +288,7 @@ export default function CheckInOutPage() {
         .filter-btn.active-ongoing { background: #f59e0b; color: #fff; border-color: #f59e0b; }
         .filter-btn.active-pending { background: #94a3b8; color: #fff; border-color: #94a3b8; }
 
-        .project-card { padding: 15px; borderRadius: 10px; cursor: pointer; marginBottom: 8px; border: 1px solid #e2e8f0; background: #fff; transition: all 0.2s; }
+        .project-card { padding: 15px; border-radius: 10px; cursor: pointer; margin-bottom: 8px; border: 1px solid #e2e8f0; background: #fff; transition: all 0.2s; }
         .project-card.selected { border: 2px solid #2563eb; background: #eff6ff; }
         
         .custom-grid { border-top: 1px solid #e2e8f0; }

@@ -13,9 +13,11 @@
     "@tabler/icons-react": "^3.36.0",
     "ag-grid-community": "^35.0.0",
     "ag-grid-react": "^35.0.0",
+    "lucide-react": "^0.562.0",
     "react": "^18.2.0",
     "react-data-table-component": "^7.7.0",
     "react-dom": "^18.2.0",
+    "react-icons": "^5.5.0",
     "react-router-dom": "^7.10.1",
     "xlsx": "^0.18.5"
   },
