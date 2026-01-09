@@ -132,10 +132,8 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     if (!header["Product ID"]) return alert("請填寫 Product ID");
     
     if (handleFinalSubmit) {
-      // 新的方式：通過 handleFinalSubmit 提交（會記錄日誌）
       handleFinalSubmit(header);
     } else {
-      // 舊的方式：本地保存（向後兼容）
       const newProject = { id: "proj_" + Date.now(), header, lots, createdAt: new Date().toLocaleString(), status: "Init" };
       const existingProjects = JSON.parse(localStorage.getItem("all_projects") || "[]");
       localStorage.setItem("all_projects", JSON.stringify([...existingProjects, newProject]));
@@ -144,7 +142,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   };
 
   // ===============================
-  // 4. AG Grid Columns (包含複製/刪除按鈕)
+  // 4. AG Grid Columns (已修改按鈕樣式)
   // ===============================
   const columnDefs = useMemo(() => [
     {
@@ -199,12 +197,27 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     { headerName: "Test Scp.", field: "testScript", editable: true, width: 120 },
     { headerName: "Note", field: "note", editable: true, width: 150 },
     {
-      width: 100,
+      headerName: "",
+      width: 75,
       pinned: "right",
       cellRenderer: (p) => (
-        <div className="d-flex gap-2 justify-content-center align-items-center h-100">
-          <button className="btn btn-xs btn-outline-primary p-1" title="複製" onClick={() => duplicateRow(p.context.lotId, p.context.stressId, p.data)}>📋</button>
-          <button className="btn btn-xs btn-outline-danger p-1" title="刪除" onClick={() => deleteRow(p.context.lotId, p.context.stressId, p.data._rid)}>🗑️</button>
+        <div className="d-flex gap-3 justify-content-center align-items-center h-100">
+          <button 
+            className="btn-icon-only text-primary" 
+            title="Copy" 
+            onClick={() => duplicateRow(p.context.lotId, p.context.stressId, p.data)}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '16px' }}
+          >
+            📋
+          </button>
+          <button 
+            className="btn-icon-only text-danger" 
+            title="Delete" 
+            onClick={() => deleteRow(p.context.lotId, p.context.stressId, p.data._rid)}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '16px' }}
+          >
+            🗑️
+          </button>
         </div>
       ),
     },
@@ -297,6 +310,14 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         .form-select-custom:focus, .form-input-custom:focus {
           border-color: #007bff;
           box-shadow: 0 0 0 2px rgba(0,123,255,0.1);
+        }
+        .btn-icon-only {
+          opacity: 0.7;
+          transition: transform 0.1s, opacity 0.2s;
+        }
+        .btn-icon-only:hover {
+          opacity: 1;
+          transform: scale(1.2);
         }
         .btn-xs { padding: 1px 5px; font-size: 12px; line-height: 1.5; border-radius: 3px; }
       `}</style>

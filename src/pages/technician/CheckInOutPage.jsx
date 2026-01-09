@@ -13,14 +13,11 @@ export default function CheckInOutPage() {
   const [filterMode, setFilterMode] = useState("all");
   const [activeLotTab, setActiveLotTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
-  const [configMaster, setConfigMaster] = useState(null); // 新增：存儲配置資料以供轉換 ID
+  const [configMaster, setConfigMaster] = useState(null);
 
   useEffect(() => {
-    // 讀取專案資料
     const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
     setAllProjects(data);
-    
-    // 讀取配置資料（用於將 Family ID 轉為 Name）
     const config = JSON.parse(localStorage.getItem("config_master") || "null");
     setConfigMaster(config);
 
@@ -34,7 +31,6 @@ export default function CheckInOutPage() {
     setActiveLotTab(0);
   }, [selectedId]);
 
-  // 新增：轉換 ID 為名稱的工具函數
   const getDisplayName = (key, value) => {
     if (!value) return "-";
     if (key === "Project Family" && configMaster?.productFamilies) {
@@ -110,7 +106,39 @@ export default function CheckInOutPage() {
     const canEdit = !isProjectCompleted;
 
     return [
-      { headerName: "Stress", field: "stress", width: 100, pinned: 'left', cellStyle: { background: '#f8fafc', fontWeight: 'bold', display: 'flex', alignItems: 'center' } },
+      { 
+        headerName: "STATUS", 
+        width: 100, 
+        pinned: 'left',
+        valueGetter: (p) => {
+          if (p.data.endTime) return "Completed";
+          if (p.data.startTime) return "In-Process";
+          return "Init";
+        },
+        cellRenderer: (p) => {
+          const status = p.value;
+          let bgColor = "#94a3b8"; // Init - Grey
+          if (status === "In-Process") bgColor = "#f59e0b"; // Ongoing - Orange
+          if (status === "Completed") bgColor = "#10b981"; // Done - Green
+          
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+              <span style={{ 
+                background: bgColor, 
+                color: 'white', 
+                padding: '2px 8px', 
+                borderRadius: '4px', 
+                fontSize: '10px', 
+                fontWeight: 'bold',
+                lineHeight: '1.4'
+              }}>
+                {status}
+              </span>
+            </div>
+          );
+        }
+      },
+      { headerName: "Stress", field: "stress", width: 100, pinned: 'left', cellStyle: { background: '#f8fafc', fontWeight: 'bold', display: 'flex', alignItems: 'center', borderRight: '2px solid #333' }, headerClass: 'stress-header' },
       { headerName: "Type", field: "type", width: 90, editable: canEdit, cellStyle: { display: 'flex', alignItems: 'center' } },
       { headerName: "Operation", field: "operation", width: 120, editable: canEdit, cellStyle: { display: 'flex', alignItems: 'center' } },
       { headerName: "Condition", field: "condition", width: 150, editable: canEdit, cellStyle: { display: 'flex', alignItems: 'center' } },
@@ -118,7 +146,7 @@ export default function CheckInOutPage() {
       { headerName: "Test Program", field: "testProgram", width: 130, editable: canEdit, cellStyle: { display: 'flex', alignItems: 'center' } },
       { headerName: "Test Script", field: "testScript", width: 130, editable: canEdit, cellStyle: { display: 'flex', alignItems: 'center' } },
       { 
-        headerName: "CHECK-IN", field: "startTime", width: 160, pinned: 'right',
+        headerName: "CHECK-IN", field: "startTime", width: 160,
         cellRenderer: (p) => (
           <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
             <button 
@@ -132,7 +160,7 @@ export default function CheckInOutPage() {
         )
       },
       { 
-        headerName: "CHECK-OUT", field: "endTime", width: 160, pinned: 'right',
+        headerName: "CHECK-OUT", field: "endTime", width: 160,
         cellRenderer: (p) => (
           <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
             <button 
@@ -163,11 +191,11 @@ export default function CheckInOutPage() {
       <div style={{ display: 'flex', gap: 0, width: '100%', height: '100vh' }}>
         
         {/* 左側清單 */}
-        <div style={{ width: '280px', flexShrink: 0, background: '#fff', borderRight: '1px solid #e2e8f0' }}>
-          <div style={{ background: '#fff', borderRadius: 0, overflow: 'hidden', boxShadow: 'none', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ width: '280px', flexShrink: 0, background: '#f8fafc', borderRight: 'none' }}>
+          <div style={{ background: '#f8fafc', borderRadius: 0, overflow: 'hidden', boxShadow: 'none', height: '100vh', display: 'flex', flexDirection: 'column', border: '1px solid #cbd5e1' }}>
             <div style={{ background: '#1e3a8a', padding: '15px', color: '#fff', fontSize: '13px', fontWeight: 'bold' }}>WORK ORDER LIST</div>
             
-            <div style={{ padding: '10px 10px' }}>
+            <div style={{ padding: '12px 10px', borderBottom: '1px solid #e2e8f0' }}>
               <input 
                 type="text" 
                 placeholder="Search Product ID..." 
@@ -213,17 +241,16 @@ export default function CheckInOutPage() {
         </div>
 
         {/* 右側主面板 */}
-        <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', background: '#fff', paddingLeft: '20px', paddingRight: '20px' }}>
+        <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', background: '#f8fafc', paddingLeft: '8px', paddingRight: '0px' }}>
           {!currentProject ? (
             <div style={{ background: '#fff', padding: '100px', textAlign: 'center', borderRadius: 0, color: '#94a3b8' }}>Select an active project to begin</div>
           ) : (
             <>
-              {/* Header Info - 這裡修正了 ID 顯示問題 */}
-              <div style={{ background: '#fff', padding: '15px 25px', borderRadius: 0, marginBottom: 0, borderLeft: '6px solid #1e3a8a', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', gap: '50px', borderBottom: '1px solid #e2e8f0' }}>
+              {/* Header Info */}
+              <div style={{ background: '#fff', padding: '15px 25px', borderRadius: 0, marginBottom: 0, borderLeft: '6px solid #1e3a8a', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', gap: '50px', borderBottom: '1px solid #e2e8f0', marginRight: '8px', borderRadius: '8px 8px 0 0', marginTop: '0px' }}>
                 {Object.entries(currentProject.header).map(([k, v]) => (
                   <div key={k}>
                     <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>{k}</div>
-                    {/* 使用 getDisplayName 函數來決定顯示內容 */}
                     <div style={{ fontSize: '15px', fontWeight: '700', color: '#334155', marginTop: '2px' }}>
                       {getDisplayName(k, v)}
                     </div>
@@ -232,7 +259,7 @@ export default function CheckInOutPage() {
               </div>
 
               {/* LOT Tabs */}
-              <div style={{ display: 'flex', gap: '8px', marginBottom: 0, borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: 0, borderBottom: '1px solid #e2e8f0', background: '#f8fafc', marginRight: '8px', paddingLeft: '0px' }}>
                 {currentProject.lots.map((lot, idx) => {
                   const progress = getLotProgress(lot);
                   return (
@@ -257,13 +284,12 @@ export default function CheckInOutPage() {
 
               {/* Data Grid Area */}
               {activeLot && (
-                <div style={{ background: '#fff', borderRadius: 0, overflow: 'hidden', boxShadow: 'none', border: 'none', padding: '15px 25px', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ background: '#fff', borderRadius: 0, overflow: 'hidden', padding: '0px 8px 8px 0px', flexGrow: 1, display: 'flex', flexDirection: 'column', marginRight: '8px', marginBottom: '8px' }}>
                   {activeLot.stresses.map((s, index) => (
-                    <div key={s.id} className="ag-theme-alpine custom-grid" style={{ flexGrow: 1, marginBottom: index < activeLot.stresses.length - 1 ? '15px' : 0 }}>
+                    <div key={s.id} className="ag-theme-alpine custom-grid" style={{ height: '100%', width: '100%', marginBottom: index < activeLot.stresses.length - 1 ? '0px' : 0 }}>
                       <AgGridReact
                         rowData={s.rowData}
                         columnDefs={columnDefs}
-                        domLayout="autoHeight"
                         rowDragManaged={true}
                         animateRows={true}
                         context={{ lotId: activeLot.id, stressId: s.id }}
@@ -291,9 +317,13 @@ export default function CheckInOutPage() {
         .project-card { padding: 15px; border-radius: 10px; cursor: pointer; margin-bottom: 8px; border: 1px solid #e2e8f0; background: #fff; transition: all 0.2s; }
         .project-card.selected { border: 2px solid #2563eb; background: #eff6ff; }
         
-        .custom-grid { border-top: 1px solid #e2e8f0; }
-        .custom-grid .ag-header { background-color: #f8fafc !important; border-bottom: 1.5px solid #e2e8f0 !important; }
-        .custom-grid .ag-cell { border-right: 1px solid #f1f5f9 !important; border-bottom: 1px solid #f1f5f9 !important; }
+        .custom-grid { border: none; }
+        .custom-grid .ag-header { background-color: #f8fafc !important; border-bottom: 2px solid #333 !important; }
+        .custom-grid .ag-row { border-bottom: 1px solid #333 !important; }
+        .custom-grid .ag-cell { border-right: 1px solid #333 !important; }
+        .custom-grid .ag-cell:last-child { border-right: none !important; }
+        .custom-grid .ag-header-cell { border-right: 1px solid #333 !important; }
+        .custom-grid .ag-header-cell:last-child { border-right: none !important; }
         
         .op-button { width: 100%; height: 32px; border: none; border-radius: 6px; font-weight: 800; font-size: 12px; cursor: pointer; transition: all 0.2s; }
         .op-button.start { background: #2563eb; color: white; }
