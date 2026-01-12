@@ -131,7 +131,7 @@ export default function ViewSearchPage({ userRole, handleEdit, handleDelete }) {
               className="btn-delete"
               onClick={(e) => {
                 e.stopPropagation();
-                if (window.confirm(`确认删除项目 ${params.data.projectId}?`)) {
+                if (window.confirm(`Are you sure you want to delete this item?`)) {
                   handleDelete(params.data.projectId);
                   const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
                   const updatedData = data.filter(proj => proj.header["Product ID"] !== params.data.projectId);

@@ -13,9 +13,9 @@ const API_BASE = "http://localhost:5001";
 
 export default function RunCardFormPage({ handleFinalSubmit }) {
   // ===============================
-  // 1. 基本資料狀態
+  // 1. 初始值與基本資料狀態
   // ===============================
-  const [header, setHeader] = useState({
+  const initialHeader = {
     "Project Family": "",
     "Product": "",
     "Product ID": "",
@@ -23,7 +23,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     "QR": "",
     "Owner": "",
     "Remark": "",
-  });
+  };
+
+  const [header, setHeader] = useState(initialHeader);
 
   const [configMaster, setConfigMaster] = useState({
     productFamilies: [],
@@ -45,14 +47,13 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     note: "",
   });
 
-  const [lots, setLots] = useState([
-    {
-      id: "lot_" + Date.now(),
-      lotId: "",
-      stresses: [{ id: "str_" + Date.now(), rowData: [newRow()] }],
-    },
-  ]);
+  const createInitialLot = () => ({
+    id: "lot_" + Date.now(),
+    lotId: "",
+    stresses: [{ id: "str_" + Date.now(), rowData: [newRow()] }],
+  });
 
+  const [lots, setLots] = useState([createInitialLot()]);
   const [activeLotId, setActiveLotId] = useState(lots[0].id);
 
   // ===============================
@@ -87,9 +88,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   // 3. 操作邏輯
   // ===============================
   const addLot = () => {
-    const id = "lot_" + Date.now();
-    setLots((p) => [...p, { id, lotId: "", stresses: [{ id: "str_" + Date.now(), rowData: [newRow()] }] }]);
-    setActiveLotId(id);
+    const newLot = createInitialLot();
+    setLots((p) => [...p, newLot]);
+    setActiveLotId(newLot.id);
   };
 
   const deleteLot = (lotId) => {
@@ -129,20 +130,41 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   }, []);
 
   const handleSave = () => {
-    if (!header["Product ID"]) return alert("請填寫 Product ID");
-    
+    if (!header["Product ID"]) return alert("Please fill in Product ID");
+
+    // 1. 二次確認
+    const isConfirmed = window.confirm(`Are you sure you want to create the project？`);
+    if (!isConfirmed) return;
+
+    // 2. 建立完整資料
+    const newProject = { 
+      id: "proj_" + Date.now(), 
+      header, 
+      lots, 
+      createdAt: new Date().toLocaleString(), 
+      status: "Init" 
+    };
+
+    // 3. 儲存至 localStorage
+    const existingProjects = JSON.parse(localStorage.getItem("all_projects") || "[]");
+    localStorage.setItem("all_projects", JSON.stringify([...existingProjects, newProject]));
+
+    // 4. 如果有父組件回呼則執行 (但不做導航)
     if (handleFinalSubmit) {
-      handleFinalSubmit(header);
-    } else {
-      const newProject = { id: "proj_" + Date.now(), header, lots, createdAt: new Date().toLocaleString(), status: "Init" };
-      const existingProjects = JSON.parse(localStorage.getItem("all_projects") || "[]");
-      localStorage.setItem("all_projects", JSON.stringify([...existingProjects, newProject]));
-      alert(`專案 ${header["Product ID"]} 已儲存至本地！`);
+      handleFinalSubmit(newProject);
     }
+
+    alert(`Project: ${header["Product ID"]} has been saved successfully！`);
+
+    // 5. 重置表單 (不跳頁，回到初始狀態)
+    setHeader(initialHeader);
+    const resetLot = createInitialLot();
+    setLots([resetLot]);
+    setActiveLotId(resetLot.id);
   };
 
   // ===============================
-  // 4. AG Grid Columns (已修改按鈕樣式)
+  // 4. AG Grid Columns
   // ===============================
   const columnDefs = useMemo(() => [
     {
@@ -285,6 +307,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                   animateRows={true}
                   context={{ lotId: lot.id, stressId: s.id }}
                   stopEditingWhenCellsLoseFocus={true}
+                  onCellValueChanged={(params) => {
+                    updateRowFields(params.context.lotId, params.context.stressId, params.data._rid, params.data);
+                  }}
                 />
               </div>
               <button className="btn-add-step mt-2" onClick={() => addRow(lot.id, s.id)}>+ Add Step</button>
@@ -319,7 +344,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
           opacity: 1;
           transform: scale(1.2);
         }
-        .btn-xs { padding: 1px 5px; font-size: 12px; line-height: 1.5; border-radius: 3px; }
       `}</style>
     </div>
   );

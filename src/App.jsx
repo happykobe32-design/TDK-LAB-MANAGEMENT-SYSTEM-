@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-// 引入 React Router 相關組件
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import DashboardPage from "./pages/admin/DashboardPage";
+// 引入 React Router 相關組件，新增 useLocation 來判定當前路徑
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import PermissionMaintenancePage from "./pages/admin/PermissionMaintenancePage";
 import ConfigurationMaintenancePage from "./pages/admin/ConfigurationMaintenancePage";
 import RunCardListPage from "./pages/shared/RunCardListPage";
@@ -11,7 +10,7 @@ import CheckInOutPage from "./pages/technician/CheckInOutPage";
 import PageLayout from "./components/PageLayout";
 
 // ==================================================
-// 系統常數(人員分三種)
+// 系統常數
 const ROLES = {
   ADMIN: "admin",
   ENGINEER: "engineer",
@@ -25,13 +24,13 @@ const STATUS = {
   INVALID: "Invalid",
 };
 
-// 為了讓 App 內部可以使用 useNavigate，建立一個內部容器
 function AppContent() {
-  // ==================================================
-  // Global State
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null);
+  const location = useLocation(); // 取得當前路徑
+  
+  // 修正：從 sessionStorage 讀取，防止操作時意外登出
+  const [user, setUser] = useState(() => sessionStorage.getItem("logged_user"));
+  const [userRole, setUserRole] = useState(() => sessionStorage.getItem("logged_role"));
 
   const [loginData, setLoginData] = useState({
     username: "",
@@ -48,10 +47,9 @@ function AppContent() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [configSubMenuOpen, setConfigSubMenuOpen] = useState(false); 
   const userMenuRef = useRef(null);
 
-  // ==================================================
-  // localStorage sync
   useEffect(() => {
     localStorage.setItem("runCards_db", JSON.stringify(runCards));
   }, [runCards]);
@@ -66,41 +64,49 @@ function AppContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ==================================================
-  // Login / Logout
+  // 判定是否為當前頁面
+  const isActive = (path) => location.pathname === path;
+
   const handleLogin = () => {
     const { username, password } = loginData;
     if (password !== "1234") return alert("密碼錯誤");
 
+    let loggedUser = "";
+    let loggedRole = "";
+
     if (username === "admin") {
-      setUser("Admin User");
-      setUserRole(ROLES.ADMIN);
-      navigate("/dashboard");
+      loggedUser = "Admin User";
+      loggedRole = ROLES.ADMIN;
+      navigate("/permission"); 
     } else if (username === "engineer") {
-      setUser("Engineer Chris");
-      setUserRole(ROLES.ENGINEER);
+      loggedUser = "Engineer Chris";
+      loggedRole = ROLES.ENGINEER;
       navigate("/create"); 
     } else if (username === "technician") {
-      setUser("Tech Sam");
-      setUserRole(ROLES.TECHNICIAN);
+      loggedUser = "Tech Sam";
+      loggedRole = ROLES.TECHNICIAN;
       navigate("/checkinout");
     } else {
       return alert("帳號不存在 (admin / engineer / technician)");
     }
 
+    setUser(loggedUser);
+    setUserRole(loggedRole);
+    sessionStorage.setItem("logged_user", loggedUser);
+    sessionStorage.setItem("logged_role", loggedRole);
     setSidebarOpen(false);
   };
 
   const handleLogout = () => {
     setUser(null);
     setUserRole(null);
+    sessionStorage.removeItem("logged_user");
+    sessionStorage.removeItem("logged_role");
     setLoginData({ username: "", password: "" });
     navigate("/");
     setSidebarOpen(false);
   };
 
-  // ==================================================
-  // Run Card Logic
   const generateSerialId = () => {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const count = runCards.filter((rc) => rc.id.startsWith(today)).length + 1;
@@ -109,7 +115,6 @@ function AppContent() {
 
   const handleFinalSubmit = (runCardData) => {
     if (userRole === ROLES.TECHNICIAN) return alert("技術員無權限新增");
-
     const newCard = {
       id: generateSerialId(),
       status: STATUS.INIT,
@@ -119,21 +124,18 @@ function AppContent() {
       lastModifiedTime: new Date().toLocaleString(),
       ...runCardData,
     };
-
     setRunCards((prev) => [...prev, newCard]);
-    navigate("/list");
+    // 這裡已經移除 navigate("/list")，所以會維持在原頁面
   };
 
   const handleDelete = (id) => {
     if (userRole === ROLES.TECHNICIAN) return alert("技術員無權限");
-
+    
     if (userRole === ROLES.ADMIN) {
       setRunCards((prev) => prev.filter((rc) => rc.id !== id));
     } else {
       setRunCards((prev) =>
-        prev.map((rc) =>
-          rc.id === id ? { ...rc, status: STATUS.INVALID } : rc
-        )
+        prev.map((rc) => (rc.id === id ? { ...rc, status: STATUS.INVALID } : rc))
       );
     }
   };
@@ -155,12 +157,7 @@ function AppContent() {
     setRunCards((prev) =>
       prev.map((rc) =>
         rc.id === editingId
-          ? {
-              ...rc,
-              ...editFormData,
-              lastModifiedUser: user,
-              lastModifiedTime: new Date().toLocaleString(),
-            }
+          ? { ...rc, ...editFormData, lastModifiedUser: user, lastModifiedTime: new Date().toLocaleString() }
           : rc
       )
     );
@@ -175,10 +172,7 @@ function AppContent() {
         rc.id === id
           ? {
               ...rc,
-              status:
-                action === "Check-in"
-                  ? STATUS.IN_PROCESS
-                  : STATUS.COMPLETED,
+              status: action === "Check-in" ? STATUS.IN_PROCESS : STATUS.COMPLETED,
               lastModifiedUser: user,
               lastModifiedTime: new Date().toLocaleString(),
             }
@@ -187,8 +181,6 @@ function AppContent() {
     );
   };
 
-  // ==================================================
-  // Login Page View
   if (!user) {
     return (
       <div className="page page-center">
@@ -196,52 +188,28 @@ function AppContent() {
           <div className="text-center mb-4">
             <h1 className="fw-bold mb-1">LAB MANAGEMENT SYSTEM</h1>
           </div>
-
           <div className="card card-md shadow-sm">
             <div className="card-body">
               <h2 className="h3 text-center mb-4">Log in</h2>
-
               <div className="mb-3">
-                <label className="form-label">
-                  User ID (admin / engineer / technician)
-                </label>
+                <label className="form-label">User ID (admin / engineer / technician)</label>
                 <input
                   className="form-control"
                   value={loginData.username}
-                  onChange={(e) =>
-                    setLoginData({
-                      ...loginData,
-                      username: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
                 />
               </div>
-
               <div className="mb-3">
                 <label className="form-label">Password</label>
                 <input
                   type="password"
                   className="form-control"
                   value={loginData.password}
-                  onChange={(e) =>
-                    setLoginData({
-                      ...loginData,
-                      password: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
                 />
               </div>
-
-              <button
-                className="btn btn-primary w-100"
-                onClick={handleLogin}
-              >
-                Login
-              </button>
-
-              <div className="text-muted text-center mt-3 small">
-                預設密碼：1234
-              </div>
+              <button className="btn btn-primary w-100" onClick={handleLogin}>Login</button>
+              <div className="text-muted text-center mt-3 small">預設密碼：1234</div>
             </div>
           </div>
         </div>
@@ -253,11 +221,15 @@ function AppContent() {
   const isEngineer = userRole === ROLES.ENGINEER;
   const isTechnician = userRole === ROLES.TECHNICIAN;
 
-  // ==================================================
-  // Main Layout with Routes
+  const navItemStyle = (path) => ({
+    borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
+    backgroundColor: isActive(path) ? "rgba(0, 0, 0, 0.25)" : "transparent",
+    borderLeft: isActive(path) ? "4px solid #3b82f6" : "4px solid transparent",
+    transition: "all 0.2s ease"
+  });
+
   return (
     <div className={`page ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
-      {/* Sidebar */}
       <aside
         className={`navbar navbar-vertical navbar-expand-lg ${sidebarOpen ? "show" : "d-none"}`}
         data-bs-theme="dark"
@@ -266,94 +238,81 @@ function AppContent() {
           position: "fixed",
           zIndex: 1050,
           height: "100vh",
-          // --- 關鍵修改：改為與標題一致的深藍色 ---
           backgroundColor: "#1e3a8a", 
-          borderRight: "1px solid rgba(255, 255, 255, 0.1)", // 加一條淡淡的右邊框增加層次
+          borderRight: "1px solid rgba(255, 255, 255, 0.15)",
         }}
       >
-        <div className="container-fluid">
-          <h1 className="navbar-brand fw-bold mb-3" style={{ color: "#ffffff", fontSize: "1.5rem" }}>Settings</h1>
-          <ul className="navbar-nav pt-lg-3">
+        <div className="container-fluid px-0">
+          <div className="px-4 py-4 border-bottom" style={{ borderColor: "rgba(255, 255, 255, 0.2) !important" }}>
+            <h1 className="navbar-brand fw-bold m-0 d-flex align-items-center gap-2" style={{ color: "#ffffff", fontSize: "1.2rem", letterSpacing: "1px" }}>
+              <span>⚙️</span> SYSTEM MENU
+            </h1>
+          </div>
+          <ul className="navbar-nav px-0">
             {isAdmin && (
-              <li className="nav-item">
+              <li className="nav-item" style={navItemStyle("/permission")}>
                 <button
-                  className="nav-link btn w-100 text-start"
-                  onClick={() => {
-                    navigate("/dashboard");
-                    setSidebarOpen(false);
-                  }}
-                >
-                  📊Dashboard
-                </button>
-              </li>
-            )}
-
-            {isAdmin && (
-              <li className="nav-item">
-                <button
-                  className="nav-link btn w-100 text-start"
-                  onClick={() => {
-                    navigate("/permission");
-                    setSidebarOpen(false);
-                  }}
+                  className={`nav-link btn w-100 text-start px-4 py-3 ${isActive("/permission") ? "active fw-bold text-white" : ""}`}
+                  onClick={() => { navigate("/permission"); setSidebarOpen(false); }}
                 >
                   🔐 Permission Maintenance
                 </button>
               </li>
             )}
-
             {isAdmin && (
               <li className="nav-item">
-                <button
-                  className="nav-link btn w-100 text-start"
-                  onClick={() => {
-                    navigate("/config");
-                    setSidebarOpen(false);
-                  }}
-                >
-                  ⚙️ Configuration Maintenance
-                </button>
+                <div style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.15)" }}>
+                  <button
+                    className="nav-link btn w-100 text-start px-4 py-3 d-flex align-items-center"
+                    onClick={() => setConfigSubMenuOpen(!configSubMenuOpen)}
+                  >
+                    <span className="flex-grow-1">🛠️ Configuration Maintenance</span>
+                    <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>
+                      {configSubMenuOpen ? "▼" : "▶"}
+                    </span>
+                  </button>
+                </div>
+                {configSubMenuOpen && (
+                  <ul className="list-unstyled mb-0">
+                    <li style={navItemStyle("/config")}>
+                      <button
+                        className={`nav-link btn w-100 text-start px-5 py-2 ${isActive("/config") ? "active fw-bold text-white" : ""}`}
+                        onClick={() => { navigate("/config"); setSidebarOpen(false); }}
+                      >
+                        <span className="me-2">•</span> Product Family
+                      </button>
+                    </li>
+                  </ul>
+                )}
               </li>
             )}
-
             {(isAdmin || isEngineer) && (
-              <li className="nav-item">
+              <li className="nav-item" style={navItemStyle("/list")}>
                 <button
-                  className="nav-link btn w-100 text-start"
-                  onClick={() => {
-                    navigate("/list");
-                    setSidebarOpen(false);
-                  }}
+                  className={`nav-link btn w-100 text-start px-4 py-3 ${isActive("/list") ? "active fw-bold text-white" : ""}`}
+                  onClick={() => { navigate("/list"); setSidebarOpen(false); }}
                 >
-                  🔍Project View/Search
+                  🔍 Project View / Search
                 </button>
               </li>
             )}
-
             {(isAdmin || isEngineer) && (
-              <li className="nav-item">
+              <li className="nav-item" style={navItemStyle("/create")}>
                 <button
-                  className="nav-link btn w-100 text-start"
-                  onClick={() => {
-                    navigate("/create");
-                    setSidebarOpen(false);
-                  }}
+                  className={`nav-link btn w-100 text-start px-4 py-3 ${isActive("/create") ? "active fw-bold text-white" : ""}`}
+                  onClick={() => { navigate("/create"); setSidebarOpen(false); }}
                 >
-                  ➕Create Project
+                  ➕ Create Project
                 </button>
               </li>
             )}
-
             {(isAdmin || isTechnician) && (
-              <li className="nav-item">
+              <li className="nav-item" style={navItemStyle("/checkinout")}>
                 <button
-                  className="nav-link btn w-100 text-start"
-                  onClick={() => {
-                    navigate("/checkinout");
-                    setSidebarOpen(false);
-                  }}
+                  className={`nav-link btn w-100 text-start px-4 py-3 ${isActive("/checkinout") ? "active fw-bold text-white" : ""}`}
+                  onClick={() => { navigate("/checkinout"); setSidebarOpen(false); }}
                 >
-                  ⏱️Check In / Out
+                  ⏱️ Check In / Out
                 </button>
               </li>
             )}
@@ -361,7 +320,6 @@ function AppContent() {
         </div>
       </aside>
 
-      {/* Page Wrapper */}
       <div
         className="page-wrapper"
         style={{
@@ -369,60 +327,25 @@ function AppContent() {
           transition: "margin 0.3s",
         }}
       >
-        {/* --- 修改後的深藍色標題列 --- */}
-        <div 
-          className="page-header" 
-          style={{ 
-            background: "#1e3a8a",
-            padding: "12px 20px",
-            color: "#ffffff",
-            boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-            margin: 0
-          }}
-        >
+        <div className="page-header" style={{ background: "#1e3a8a", padding: "12px 20px", color: "#ffffff", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", margin: 0 }}>
           <div className="d-flex align-items-center">
-            {/* 1. 左側漢堡選單按鈕 - 改為白色 */}
-            <button
-              className="navbar-toggler me-3 d-block"
-              style={{ color: "#ffffff", border: "1px solid rgba(255,255,255,0.3)", background: "transparent" }}
-              onClick={() => setSidebarOpen((v) => !v)}
-            >
-              ☰
-            </button>
-
-            {/* 2. 靠左標題區塊 */}
+            <button className="navbar-toggler me-3 d-block" onClick={() => setSidebarOpen((v) => !v)}>☰</button>
             <div>
               <h2 className="page-title" style={{ margin: 0, color: "#ffffff", fontWeight: "700", letterSpacing: "1px", fontSize: "1.25rem" }}>
                 LAB MANAGEMENT SYSTEM
               </h2>
             </div>
-
-            {/* 3. 右側使用者資訊 - 文字改為白色以利閱讀 */}
             <div className="ms-auto position-relative" ref={userMenuRef}>
-              <button
-                className="btn btn-link d-flex align-items-center text-decoration-none"
-                style={{ color: "#ffffff", padding: 0 }} 
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
-              >
-                <span className="avatar avatar-sm bg-blue-lt me-2" style={{ border: "1px solid #fff" }}>
-                  {user.charAt(0)}
-                </span>
+              <button className="btn btn-link d-flex align-items-center text-decoration-none" style={{ color: "#ffffff", padding: 0 }} onClick={() => setUserMenuOpen(!userMenuOpen)}>
+                <span className="avatar avatar-sm bg-blue-lt me-2" style={{ border: "1px solid #fff" }}>{user?.charAt(0)}</span>
                 <div className="text-start d-none d-md-block">
                   <div className="fw-bold small" style={{ lineHeight: "1.2" }}>{user}</div>
-                  <div style={{ fontSize: "10px", color: "#cbd5e1" }}>
-                    {userRole.toUpperCase()}
-                  </div>
+                  <div style={{ fontSize: "10px", color: "#cbd5e1" }}>{userRole?.toUpperCase()}</div>
                 </div>
               </button>
-
               {userMenuOpen && (
-                <div
-                  className="dropdown-menu dropdown-menu-end show shadow"
-                  style={{ position: "absolute", right: 0, marginTop: "8px" }}
-                >
-                  <button className="dropdown-item text-danger" onClick={handleLogout}>
-                    Logout
-                  </button>
+                <div className="dropdown-menu dropdown-menu-end show shadow" style={{ position: "absolute", right: 0, marginTop: "8px" }}>
+                  <button className="dropdown-item text-danger" onClick={handleLogout}>Logout</button>
                 </div>
               )}
             </div>
@@ -431,86 +354,20 @@ function AppContent() {
 
         <div className="page-body" style={{ padding: 0, margin: 0 }}>
           <Routes>
-            {/* Dashboard */}
-            <Route 
-              path="/dashboard" 
-              element={isAdmin ? (
-                <PageLayout title="Dashboard" icon="📊">
-                  <DashboardPage runCards={runCards} setPage={navigate} />
-                </PageLayout>
-              ) : <Navigate to="/list" />} 
-            />
-            
-            {/* Permission Maintenance */}
-            <Route 
-              path="/permission" 
-              element={isAdmin ? (
-                <PageLayout title="Permission Maintenance" icon="🔐">
-                  <PermissionMaintenancePage />
-                </PageLayout>
-              ) : <Navigate to="/dashboard" />} 
-            />
-            
-            {/* Configuration Maintenance */}
-            <Route 
-              path="/config" 
-              element={isAdmin ? (
-                <PageLayout title="Configuration Maintenance" icon="⚙️">
-                  <ConfigurationMaintenancePage />
-                </PageLayout>
-              ) : <Navigate to="/dashboard" />} 
-            />
-            
-            {/* Run Card List */}
-            <Route 
-              path="/list" 
-              element={(isAdmin || isEngineer) ? (
-                <PageLayout title="Project View / Search" icon="🔍">
-                  <RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} />
-                </PageLayout>
-              ) : <Navigate to="/checkinout" />} 
-            />
-            
-            {/* Create Project */}
-            <Route 
-              path="/create" 
-              element={(isAdmin || isEngineer) ? (
-                <PageLayout title="Create Project" icon="➕">
-                  <RunCardFormPage handleFinalSubmit={handleFinalSubmit} />
-                </PageLayout>
-              ) : <Navigate to="/list" />} 
-            />
-            
-            {/* Edit Project */}
-            <Route 
-              path="/edit" 
-              element={(
-                <PageLayout title="Edit Project" icon="✏️">
-                  <RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} />
-                </PageLayout>
-              )} 
-            />
-            
-            {/* Check In / Out */}
-            <Route 
-              path="/checkinout" 
-              element={(isAdmin || isTechnician) ? (
-                <PageLayout title="Check In / Out" icon="⏱️">
-                  <CheckInOutPage handleCheckInOutProp={handleCheckInOut} />
-                  </PageLayout>
-                ) : <Navigate to="/list" />} 
-              />
-              
-              {/* 預設路由 */}
-              <Route path="/" element={<Navigate to={isAdmin ? "/dashboard" : (isEngineer ? "/create" : "/checkinout")} />} />
-            </Routes>
+            <Route path="/permission" element={isAdmin ? (<PageLayout title="Permission Maintenance" icon="🔐"><PermissionMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/config" element={isAdmin ? (<PageLayout title="Configuration Maintenance" icon="🛠️"><ConfigurationMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/list" element={(isAdmin || isEngineer) ? (<PageLayout title="Project View / Search" icon="🔍"><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
+            <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title="Create Project" icon="➕"><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/edit" element={(<PageLayout title="Edit Project" icon="✏️"><RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} /></PageLayout>)} />
+            <Route path="/checkinout" element={(isAdmin || isTechnician) ? (<PageLayout title="Check In / Out" icon="⏱️"><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/" element={<Navigate to={isAdmin ? "/permission" : (isEngineer ? "/create" : "/checkinout")} />} />
+          </Routes>
         </div>
       </div>
     </div>
   );
 }
 
-// 最外層必須包覆 Router 容器
 export default function App() {
   return (
     <Router>
