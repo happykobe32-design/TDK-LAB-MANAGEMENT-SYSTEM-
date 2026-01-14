@@ -130,6 +130,7 @@ function AppContent() {
 
   const handleDelete = (id) => {
     if (userRole === ROLES.TECHNICIAN) return alert("技術員無權限");
+
     
     if (userRole === ROLES.ADMIN) {
       setRunCards((prev) => prev.filter((rc) => rc.id !== id));

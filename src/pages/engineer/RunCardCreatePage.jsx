@@ -33,6 +33,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   });
 
   const [stressMeta, setStressMeta] = useState({});
+  const [templates, setTemplates] = useState([]); // 存放常用範本
 
   const newRow = () => ({
     _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2),
@@ -72,16 +73,20 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         setStressMeta(map);
       });
 
-    const saved = localStorage.getItem("config_master");
-    if (saved) {
+    const savedConfig = localStorage.getItem("config_master");
+    if (savedConfig) {
       try {
-        const parsed = JSON.parse(saved);
+        const parsed = JSON.parse(savedConfig);
         setConfigMaster({
           productFamilies: parsed.productFamilies || [],
           products: parsed.products || [],
         });
       } catch (e) { console.error(e); }
     }
+
+    // 讀取本地快取範本
+    const savedTemplates = JSON.parse(localStorage.getItem("runcard_templates") || "[]");
+    setTemplates(savedTemplates);
   }, []);
 
   // ===============================
@@ -129,14 +134,52 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     setLots((prev) => prev.map((l) => l.id === lotId ? { ...l, stresses: l.stresses.map((s) => s.id === stressId ? { ...s, rowData: s.rowData.map((r) => r._rid === rid ? { ...r, ...patch } : r) } : s) } : l));
   }, []);
 
+  // --- 範本相關功能 ---
+  const saveAsTemplate = (lot) => {
+    const templateName = window.prompt("請輸入常用範本名稱 (例如: HTOL標準流程):");
+    if (!templateName) return;
+
+    const newTemplate = {
+      name: templateName,
+      stresses: lot.stresses.map(s => ({
+        rowData: s.rowData.map(r => {
+          const { _rid, ...pureData } = r; // 移除內部ID以利重新生成
+          return pureData;
+        })
+      }))
+    };
+
+    const updated = [...templates, newTemplate];
+    setTemplates(updated);
+    localStorage.setItem("runcard_templates", JSON.stringify(updated));
+    alert(`範本 "${templateName}" 已儲存！`);
+  };
+
+  const applyTemplate = (lotId, templateIndex) => {
+    if (templateIndex === "") return;
+    const template = templates[templateIndex];
+    if (!template) return;
+
+    setLots((prev) => prev.map((l) => {
+      if (l.id === lotId) {
+        return {
+          ...l,
+          stresses: template.stresses.map(s => ({
+            id: "str_" + Date.now() + "_" + Math.random().toString(16).slice(2),
+            rowData: s.rowData.map(r => ({ ...r, _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2) }))
+          }))
+        };
+      }
+      return l;
+    }));
+  };
+
   const handleSave = () => {
     if (!header["Product ID"]) return alert("Please fill in Product ID");
 
-    // 1. 二次確認
     const isConfirmed = window.confirm(`Are you sure you want to create the project？`);
     if (!isConfirmed) return;
 
-    // 2. 建立完整資料
     const newProject = { 
       id: "proj_" + Date.now(), 
       header, 
@@ -145,18 +188,15 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       status: "Init" 
     };
 
-    // 3. 儲存至 localStorage
     const existingProjects = JSON.parse(localStorage.getItem("all_projects") || "[]");
     localStorage.setItem("all_projects", JSON.stringify([...existingProjects, newProject]));
 
-    // 4. 如果有父組件回呼則執行 (但不做導航)
     if (handleFinalSubmit) {
       handleFinalSubmit(newProject);
     }
 
     alert(`Project: ${header["Product ID"]} has been saved successfully！`);
 
-    // 5. 重置表單 (不跳頁，回到初始狀態)
     setHeader(initialHeader);
     const resetLot = createInitialLot();
     setLots([resetLot]);
@@ -288,10 +328,22 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
       {lots.map((lot) => activeLotId === lot.id && (
         <div key={lot.id} className="prof-card">
-          <div className="lot-header d-flex align-items-center gap-3 mb-3">
-            <span className="bold-label">LOT ID :</span>
-            <input className="lot-id-input" style={{ width: "200px" }} value={lot.lotId} onChange={(e) => setLots((p) => p.map((l) => l.id === lot.id ? { ...l, lotId: e.target.value } : l))} />
-            <button className="btn-copy-outline" onClick={() => duplicateLot(lot)}>❐ Copy LOT</button>
+          <div className="lot-header d-flex align-items-center justify-content-between mb-3">
+            <div className="d-flex align-items-center gap-3">
+              <span className="bold-label">LOT ID :</span>
+              <input className="lot-id-input" style={{ width: "200px" }} value={lot.lotId} onChange={(e) => setLots((p) => p.map((l) => l.id === lot.id ? { ...l, lotId: e.target.value } : l))} />
+              <button className="btn-copy-outline" onClick={() => duplicateLot(lot)}>❐ Copy LOT</button>
+            </div>
+            
+            <div className="d-flex align-items-center gap-2">
+              <select className="form-select-custom" style={{ width: "180px", height: "32px", fontSize: "12px" }} onChange={(e) => applyTemplate(lot.id, e.target.value)} defaultValue="">
+                <option value="" disabled>📋 Apply Template...</option>
+                {templates.map((t, idx) => <option key={idx} value={idx}>{t.name}</option>)}
+              </select>
+              <button className="btn-save-template" onClick={() => saveAsTemplate(lot)} style={{ padding: "4px 12px", borderRadius: "6px", border: "1px solid #ffc107", background: "#fff9e6", color: "#856404", fontSize: "12px", fontWeight: "bold", cursor: "pointer" }}>
+                ⭐ Save as Template
+              </button>
+            </div>
           </div>
 
           {lot.stresses.map((s) => (
@@ -343,6 +395,10 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         .btn-icon-only:hover {
           opacity: 1;
           transform: scale(1.2);
+        }
+        .btn-save-template:hover {
+          background: #ffc107 !important;
+          color: white !important;
         }
       `}</style>
     </div>
