@@ -254,9 +254,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     },
     { headerName: "Condition", field: "condition", editable: true, width: 120 },
     { headerName: "Sample Size", field: "sampleSize", editable: true, width: 100 },
-    { headerName: "Program", field: "programName", editable: true, width: 120 },
-    { headerName: "Test Pro.", field: "testProgram", editable: true, width: 120 },
-    { headerName: "Test Scp.", field: "testScript", editable: true, width: 120 },
+    { headerName: "Program Name", field: "programName", editable: true, width: 120 },
+    { headerName: "Test Program.", field: "testProgram", editable: true, width: 120 },
+    { headerName: "Test Script.", field: "testScript", editable: true, width: 120 },
     { headerName: "Note", field: "note", editable: true, width: 150 },
     {
       headerName: "",
@@ -375,31 +375,12 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       </div>
 
       <style>{`
-        .form-select-custom, .form-input-custom {
-          padding: 6px 10px;
-          border: 1px solid #ddd;
-          border-radius: 6px;
-          font-size: 14px;
-          outline: none;
-          transition: border 0.2s;
-          height: 38px;
-        }
-        .form-select-custom:focus, .form-input-custom:focus {
-          border-color: #007bff;
-          box-shadow: 0 0 0 2px rgba(0,123,255,0.1);
-        }
-        .btn-icon-only {
-          opacity: 0.7;
-          transition: transform 0.1s, opacity 0.2s;
-        }
-        .btn-icon-only:hover {
-          opacity: 1;
-          transform: scale(1.2);
-        }
-        .btn-save-template:hover {
-          background: #ffc107 !important;
-          color: white !important;
-        }
+        .form-select-custom, .form-input-custom {padding: 6px 10px;border: 1px solid #ddd;border-radius: 6px;font-size: 14px;outline: none;transition: border 0.2s;height: 38px;}
+        .form-select-custom:focus, .form-input-custom:focus {border-color: #007bff;box-shadow: 0 0 0 2px rgba(0,123,255,0.1);}
+        
+        .btn-icon-only {opacity: 0.7;transition: transform 0.1s, opacity 0.2s;}
+        .btn-icon-only:hover {opacity: 1;transform: scale(1.2);}
+        .btn-save-template:hover {background: #ffc107 !important;color: white !important;}
       `}</style>
     </div>
   );

@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-// 引入 React Router 相關組件，新增 useLocation 來判定當前路徑
+// 引入 React Router 相關組件
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+
+// 頁面組件導入
 import PermissionMaintenancePage from "./pages/admin/PermissionMaintenancePage";
 import ConfigurationMaintenancePage from "./pages/admin/ConfigurationMaintenancePage";
+import StressConfigPage from "./pages/admin/StressConfigPage"; // 新增的獨立設定頁
 import RunCardListPage from "./pages/shared/RunCardListPage";
 import RunCardEditPage from "./pages/shared/RunCardEditPage";
 import RunCardFormPage from "./pages/engineer/RunCardCreatePage";
@@ -28,7 +31,7 @@ function AppContent() {
   const navigate = useNavigate();
   const location = useLocation(); // 取得當前路徑
   
-  // 修正：從 sessionStorage 讀取，防止操作時意外登出
+  // 從 sessionStorage 讀取登入狀態
   const [user, setUser] = useState(() => sessionStorage.getItem("logged_user"));
   const [userRole, setUserRole] = useState(() => sessionStorage.getItem("logged_role"));
 
@@ -37,6 +40,7 @@ function AppContent() {
     password: "",
   });
 
+  // RunCard 資料庫存取
   const [runCards, setRunCards] = useState(() => {
     const saved = localStorage.getItem("runCards_db");
     return saved ? JSON.parse(saved) : [];
@@ -64,9 +68,10 @@ function AppContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 判定是否為當前頁面
+  // 判定是否為當前頁面（用於側邊欄高亮）
   const isActive = (path) => location.pathname === path;
 
+  // 登入邏輯
   const handleLogin = () => {
     const { username, password } = loginData;
     if (password !== "1234") return alert("密碼錯誤");
@@ -97,6 +102,7 @@ function AppContent() {
     setSidebarOpen(false);
   };
 
+  // 登出邏輯
   const handleLogout = () => {
     setUser(null);
     setUserRole(null);
@@ -107,12 +113,14 @@ function AppContent() {
     setSidebarOpen(false);
   };
 
+  // 產生序號 (YYYYMMDD-XXX)
   const generateSerialId = () => {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const count = runCards.filter((rc) => rc.id.startsWith(today)).length + 1;
     return `${today}-${String(count).padStart(3, "0")}`;
   };
 
+  // 新增 RunCard
   const handleFinalSubmit = (runCardData) => {
     if (userRole === ROLES.TECHNICIAN) return alert("技術員無權限新增");
     const newCard = {
@@ -125,13 +133,11 @@ function AppContent() {
       ...runCardData,
     };
     setRunCards((prev) => [...prev, newCard]);
-    // 這裡已經移除 navigate("/list")，所以會維持在原頁面
   };
 
+  // 刪除 RunCard
   const handleDelete = (id) => {
     if (userRole === ROLES.TECHNICIAN) return alert("技術員無權限");
-
-    
     if (userRole === ROLES.ADMIN) {
       setRunCards((prev) => prev.filter((rc) => rc.id !== id));
     } else {
@@ -182,6 +188,7 @@ function AppContent() {
     );
   };
 
+  // 未登入介面
   if (!user) {
     return (
       <div className="page page-center">
@@ -222,6 +229,7 @@ function AppContent() {
   const isEngineer = userRole === ROLES.ENGINEER;
   const isTechnician = userRole === ROLES.TECHNICIAN;
 
+  // 選單項目通用樣式
   const navItemStyle = (path) => ({
     borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
     backgroundColor: isActive(path) ? "rgba(0, 0, 0, 0.25)" : "transparent",
@@ -231,6 +239,7 @@ function AppContent() {
 
   return (
     <div className={`page ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+      {/* 側邊導覽列 */}
       <aside
         className={`navbar navbar-vertical navbar-expand-lg ${sidebarOpen ? "show" : "d-none"}`}
         data-bs-theme="dark"
@@ -260,6 +269,7 @@ function AppContent() {
                 </button>
               </li>
             )}
+
             {isAdmin && (
               <li className="nav-item">
                 <div style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.15)" }}>
@@ -273,6 +283,7 @@ function AppContent() {
                     </span>
                   </button>
                 </div>
+                {/* 子選單：Product Family & Stress Settings */}
                 {configSubMenuOpen && (
                   <ul className="list-unstyled mb-0">
                     <li style={navItemStyle("/config")}>
@@ -283,10 +294,19 @@ function AppContent() {
                         <span className="me-2">•</span> Product Family
                       </button>
                     </li>
+                    <li style={navItemStyle("/stress-config")}>
+                      <button
+                        className={`nav-link btn w-100 text-start px-5 py-2 ${isActive("/stress-config") ? "active fw-bold text-white" : ""}`}
+                        onClick={() => { navigate("/stress-config"); setSidebarOpen(false); }}
+                      >
+                        <span className="me-2">•</span> Test Settings
+                      </button>
+                    </li>
                   </ul>
                 )}
               </li>
             )}
+
             {(isAdmin || isEngineer) && (
               <li className="nav-item" style={navItemStyle("/list")}>
                 <button
@@ -321,6 +341,7 @@ function AppContent() {
         </div>
       </aside>
 
+      {/* 主要內容區域 */}
       <div
         className="page-wrapper"
         style={{
@@ -355,12 +376,18 @@ function AppContent() {
 
         <div className="page-body" style={{ padding: 0, margin: 0 }}>
           <Routes>
+            {/* 管理員專用 */}
             <Route path="/permission" element={isAdmin ? (<PageLayout title="Permission Maintenance" icon="🔐"><PermissionMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/config" element={isAdmin ? (<PageLayout title="Configuration Maintenance" icon="🛠️"><ConfigurationMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/stress-config" element={isAdmin ? (<PageLayout title="Configuration Maintenance" icon="🛠️"><StressConfigPage /></PageLayout>) : <Navigate to="/list" />} />
+            
+            {/* 共用與角色路由 */}
             <Route path="/list" element={(isAdmin || isEngineer) ? (<PageLayout title="Project View / Search" icon="🔍"><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
             <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title="Create Project" icon="➕"><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/edit" element={(<PageLayout title="Edit Project" icon="✏️"><RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} /></PageLayout>)} />
             <Route path="/checkinout" element={(isAdmin || isTechnician) ? (<PageLayout title="Check In / Out" icon="⏱️"><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
+            
+            {/* 預設路由 */}
             <Route path="/" element={<Navigate to={isAdmin ? "/permission" : (isEngineer ? "/create" : "/checkinout")} />} />
           </Routes>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
@@ -6,6 +6,16 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
+/**
+ * ViewSearchPage (Master View)
+ * - List view (AG Grid) with KPI + filters (KEEP your original style vibe)
+ * - Details sidebar removed
+ * - Progress column REMOVED (per latest requirement)
+ * - Edit opens a large modal: ONE-PAGE master traveler (Create fields + Check In/Out steps)
+ * - Save writes back to localStorage "all_projects" so Check In/Out sees the same updated data
+ * - Qty In / Qty Out / Hardware are NOT shown in the master form (per requirement)
+ * - Master form header fields: follow LIST column order as the ONLY 기준 (except Status not shown inside form)
+ */
 export default function ViewSearchPage({ userRole, handleEdit, handleDelete }) {
   const [allProjects, setAllProjects] = useState([]);
   const [searchText, setSearchText] = useState("");
@@ -14,156 +24,208 @@ export default function ViewSearchPage({ userRole, handleEdit, handleDelete }) {
   const [productFilter, setProductFilter] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [selectedLot, setSelectedLot] = useState(null);
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
 
-  useEffect(() => {
-    const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
-    const masterRows = [];
-    data.forEach(proj => {
-      const createdDate = proj.header["Created Date"] || proj.createdAt || "";
-      proj.lots.forEach(lot => {
-        const allRows = lot.stresses.flatMap(s => s.rowData);
-        const isAllDone = allRows.length > 0 && allRows.every(r => r.endTime && r.endTime !== "");
-        const isAnyStarted = allRows.some(r => r.startTime && r.startTime !== "");
-        
-        let lotStatus = "Init";
-        if (isAllDone && allRows.length > 0) lotStatus = "completed";
-        else if (isAnyStarted) lotStatus = "in-process";
+  // ---- Master Edit Modal ----
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingMeta, setEditingMeta] = useState(null); // { projectId, lotId }
+  const [editDraft, setEditDraft] = useState(null); // full project object (deep clone)
+  const [editLotId, setEditLotId] = useState("");
+  const [editError, setEditError] = useState("");
 
+  const loadAll = useCallback(() => {
+    const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
+    setAllProjects(Array.isArray(data) ? data : []);
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  // ---------- Helpers ----------
+  const formatNow = () => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return (
+      d.getFullYear() +
+      "-" +
+      pad(d.getMonth() + 1) +
+      "-" +
+      pad(d.getDate()) +
+      " " +
+      pad(d.getHours()) +
+      ":" +
+      pad(d.getMinutes()) +
+      ":" +
+      pad(d.getSeconds())
+    );
+  };
+
+  const computeLotStatus = (lot) => {
+    const allRows = (lot?.stresses || []).flatMap((s) => s?.rowData || []);
+    const isAllDone =
+      allRows.length > 0 && allRows.every((r) => r.endTime && r.endTime !== "");
+    const isAnyStarted = allRows.some((r) => r.startTime && r.startTime !== "");
+
+    let lotStatus = "Init";
+    if (isAllDone && allRows.length > 0) lotStatus = "completed";
+    else if (isAnyStarted) lotStatus = "in-process";
+    return { lotStatus, allRows };
+  };
+
+  const openMasterEdit = (projectId, lotId) => {
+    const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
+    const proj = (Array.isArray(data) ? data : []).find(
+      (p) => p?.header?.["Product ID"] === projectId
+    );
+    if (!proj) {
+      alert("Project not found in localStorage.");
+      return;
+    }
+
+    const clone = JSON.parse(JSON.stringify(proj));
+    const targetLot =
+      (clone.lots || []).find((l) => l?.lotId === lotId) ||
+      (clone.lots || [])[0] ||
+      null;
+
+    setEditingMeta({ projectId, lotId });
+    setEditDraft(clone);
+    setEditLotId(targetLot?.lotId || "");
+    setEditError("");
+    setIsEditOpen(true);
+  };
+
+  const closeMasterEdit = () => {
+    setIsEditOpen(false);
+    setEditingMeta(null);
+    setEditDraft(null);
+    setEditLotId("");
+    setEditError("");
+  };
+
+  const saveMasterEdit = () => {
+    if (!editDraft || !editingMeta) return;
+
+    // Required: update Status_Update_Time
+    const now = formatNow();
+    if (!editDraft.header) editDraft.header = {};
+    editDraft.header["Status_Update_Time"] = now;
+
+    // Write back to localStorage by matching original projectId (Product ID)
+    const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
+    const arr = Array.isArray(data) ? data : [];
+    const idx = arr.findIndex(
+      (p) => p?.header?.["Product ID"] === editingMeta.projectId
+    );
+
+    if (idx < 0) {
+      setEditError("Save failed: Project not found.");
+      return;
+    }
+
+    // If user changed Product ID in header, guard duplicate
+    const newId = editDraft?.header?.["Product ID"];
+    if (newId && newId !== editingMeta.projectId) {
+      const dup = arr.findIndex(
+        (p, i) => i !== idx && p?.header?.["Product ID"] === newId
+      );
+      if (dup >= 0) {
+        setEditError(`Save failed: Duplicate Product ID "${newId}" already exists.`);
+        return;
+      }
+    }
+
+    arr[idx] = editDraft;
+    localStorage.setItem("all_projects", JSON.stringify(arr));
+    loadAll();
+
+    // Update editingMeta key if user changed Product ID
+    setEditingMeta((m) => {
+      if (!m) return m;
+      return { ...m, projectId: editDraft?.header?.["Product ID"] || m.projectId };
+    });
+
+    setEditError("");
+    closeMasterEdit();
+  };
+
+  const updateHeaderField = (key, value) => {
+    setEditDraft((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, header: { ...(prev.header || {}) } };
+      next.header[key] = value;
+      return next;
+    });
+  };
+
+  const updateRowField = (stressIdx, rowIdx, key, value) => {
+    setEditDraft((prev) => {
+      if (!prev) return prev;
+      const next = JSON.parse(JSON.stringify(prev));
+      const lot = (next.lots || []).find((l) => l?.lotId === editLotId);
+      if (!lot) return next;
+      const s = (lot.stresses || [])[stressIdx];
+      if (!s) return next;
+      if (!s.rowData) s.rowData = [];
+      const r = s.rowData[rowIdx];
+      if (!r) return next;
+      r[key] = value;
+      return next;
+    });
+  };
+
+  // ---------- Build list rows (AG Grid) ----------
+  const allRows = useMemo(() => {
+    const masterRows = [];
+    (allProjects || []).forEach((proj) => {
+      const createdDate =
+        (proj?.header &&
+          (proj.header["Created Date"] || proj.header["Created Date "])) ||
+        proj?.createdAt ||
+        "";
+      const projectId = proj?.header?.["Product ID"] || "";
+      const product = proj?.header?.["Product"] || "";
+      const owner = proj?.header?.["Owner"] || "";
+      const statusUpdateTime = proj?.header?.["Status_Update_Time"] || "";
+
+      (proj?.lots || []).forEach((lot) => {
+        const { lotStatus, allRows: steps } = computeLotStatus(lot);
         masterRows.push({
-          projectId: proj.header["Product ID"],
-          product: proj.header["Product"],
-          owner: proj.header["Owner"],
-          createdDate: createdDate,
-          lotId: lot.lotId,
+          projectId,
+          product,
+          owner,
+          createdDate,
+          statusUpdateTime,
+          lotId: lot?.lotId || "",
           status: lotStatus,
-          stresses: lot.stresses,
-          totalSteps: allRows.length,
-          completedSteps: allRows.filter(r => r.endTime).length,
-          passRate: allRows.length > 0 ? Math.round((allRows.filter(r => r.endTime).length / allRows.length) * 100) : 0
+          stresses: lot?.stresses || [],
+          totalSteps: steps.length,
+          completedSteps: steps.filter((r) => r?.endTime).length,
+          passRate:
+            steps.length > 0
+              ? Math.round((steps.filter((r) => r?.endTime).length / steps.length) * 100)
+              : 0,
         });
       });
     });
-    setAllProjects(masterRows);
-  }, []);
+    return masterRows;
+  }, [allProjects]);
 
-  const columnDefs = useMemo(() => {
-    const cols = [
-      { 
-        headerName: "Status", 
-        field: "status", 
-        width: 120,
-        cellRenderer: (p) => {
-          const colors = {
-            'completed': { bg: '#d1fae5', text: '#065f46', label: '✓ COMPLETED' },
-            'in-process': { bg: '#ffedd5', text: '#9a3412', label: '⟳ IN-PROCESS' },
-            'Init': { bg: '#f1f5f9', text: '#64748b', label: '○ INIT' }
-          };
-          const config = colors[p.value] || colors['Init'];
-          return (
-            <span style={{ backgroundColor: config.bg, color: config.text, padding: '4px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
-              {config.label}
-            </span>
-          );
-        }
-      },
-      { headerName: "Product ID", field: "projectId", width: 130 },
-      { headerName: "Lot ID", field: "lotId", width: 130 },
-      { headerName: "Product", field: "product", width: 120 },
-      { headerName: "Owner", field: "owner", width: 110 },
-      {
-        headerName: "Progress",
-        width: 130,
-        cellRenderer: (params) => {
-          const { totalSteps, completedSteps } = params.data;
-          const percent = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-          return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ flex: 1, height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${percent}%`, background: percent === 100 ? '#10b981' : '#f59e0b', transition: 'width 0.3s' }}></div>
-              </div>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#334155', minWidth: '35px' }}>{percent}%</span>
-            </div>
-          );
-        }
-      },
-      { 
-        headerName: "Created Date", 
-        field: "createdDate", 
-        width: 150 
-      },
-      { 
-        headerName: "Action", 
-        width: 100,
-        cellRenderer: (params) => (
-          <button
-            className="detail-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedLot(params.data);
-            }}
-          >
-            Details ➜
-          </button>
-        )
-      }
-    ];
-
-    // Admin 用户添加编辑和删除按钮
-    if (userRole === "admin") {
-      cols.push({
-        headerName: "Manage",
-        width: 160,
-        cellRenderer: (params) => (
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button
-              className="btn-edit"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEdit(params.data.projectId);
-              }}
-              title="Edit project"
-            >
-              ✏️ Edit
-            </button>
-            <button
-              className="btn-delete"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (window.confirm(`Are you sure you want to delete this item?`)) {
-                  handleDelete(params.data.projectId);
-                  const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
-                  const updatedData = data.filter(proj => proj.header["Product ID"] !== params.data.projectId);
-                  localStorage.setItem("all_projects", JSON.stringify(updatedData));
-                  window.location.reload();
-                }
-              }}
-              title="Delete project"
-            >
-              🗑️ Delete
-            </button>
-          </div>
-        )
-      });
-    }
-
-    return cols;
-  }, [userRole, handleEdit, handleDelete]);
-
-  // 获取过滤后的数据
   const filteredData = useMemo(() => {
-    return allProjects.filter(item => {
-      const matchesSearch = 
-        item.projectId.toLowerCase().includes(searchText.toLowerCase()) ||
-        item.lotId.toLowerCase().includes(searchText.toLowerCase()) ||
-        item.product.toLowerCase().includes(searchText.toLowerCase());
-      
+    return (allRows || []).filter((item) => {
+      const pid = (item.projectId || "").toLowerCase();
+      const lot = (item.lotId || "").toLowerCase();
+      const prod = (item.product || "").toLowerCase();
+      const own = (item.owner || "").toLowerCase();
+      const q = (searchText || "").toLowerCase();
+
+      const matchesSearch = pid.includes(q) || lot.includes(q) || prod.includes(q) || own.includes(q);
+
       const matchesStatus = statusFilter === "all" || item.status === statusFilter;
       const matchesOwner = ownerFilter === "all" || item.owner === ownerFilter;
       const matchesProduct = productFilter === "all" || item.product === productFilter;
-      
-      // 日期过滤
+
       let matchesDate = true;
       if (startDate || endDate) {
         const itemDate = new Date(item.createdDate).getTime();
@@ -177,77 +239,36 @@ export default function ViewSearchPage({ userRole, handleEdit, handleDelete }) {
           if (itemDate > end.getTime()) matchesDate = false;
         }
       }
-      
+
       return matchesSearch && matchesStatus && matchesOwner && matchesProduct && matchesDate;
     });
-  }, [allProjects, searchText, statusFilter, ownerFilter, productFilter, startDate, endDate]);
+  }, [allRows, searchText, statusFilter, ownerFilter, productFilter, startDate, endDate]);
 
-  // 获取统计数据
-  const statistics = useMemo(() => {
-    const total = filteredData.length;
-    const completed = filteredData.filter(p => p.status === 'completed').length;
-    const inProcess = filteredData.filter(p => p.status === 'in-process').length;
-    const init = filteredData.filter(p => p.status === 'Init').length;
-    const totalSteps = filteredData.reduce((sum, p) => sum + p.totalSteps, 0);
-    const completedSteps = filteredData.reduce((sum, p) => sum + p.completedSteps, 0);
-    const passRate = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-    
-    return { total, completed, inProcess, init, passRate, totalSteps, completedSteps };
-  }, [filteredData]);
-
-  // 全局卡片统计数据（不受过滤影响）
   const cardStatistics = useMemo(() => {
-    const total = allProjects.length;
-    const completed = allProjects.filter(p => p.status === 'completed').length;
-    const inProcess = allProjects.filter(p => p.status === 'in-process').length;
-    const init = allProjects.filter(p => p.status === 'Init').length;
-    
+    const total = (allRows || []).length;
+    const completed = (allRows || []).filter((p) => p.status === "completed").length;
+    const inProcess = (allRows || []).filter((p) => p.status === "in-process").length;
+    const init = (allRows || []).filter((p) => p.status === "Init").length;
     return { total, completed, inProcess, init };
-  }, [allProjects]);
+  }, [allRows]);
 
-  // 全局统计数据（不受过滤影响）
   const globalStatistics = useMemo(() => {
-    const totalSteps = allProjects.reduce((sum, p) => sum + p.totalSteps, 0);
-    const completedSteps = allProjects.reduce((sum, p) => sum + p.completedSteps, 0);
+    const totalSteps = (allRows || []).reduce((sum, p) => sum + (p.totalSteps || 0), 0);
+    const completedSteps = (allRows || []).reduce((sum, p) => sum + (p.completedSteps || 0), 0);
     const passRate = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-    
     return { passRate, totalSteps, completedSteps };
-  }, [allProjects]);
+  }, [allRows]);
 
-  // 获取下拉选项
   const owners = useMemo(() => {
-    const unique = [...new Set(allProjects.map(p => p.owner))];
+    const unique = [...new Set((allRows || []).map((p) => p.owner).filter(Boolean))];
     return unique.sort();
-  }, [allProjects]);
+  }, [allRows]);
 
   const products = useMemo(() => {
-    const unique = [...new Set(allProjects.map(p => p.product))];
+    const unique = [...new Set((allRows || []).map((p) => p.product).filter(Boolean))];
     return unique.sort();
-  }, [allProjects]);
+  }, [allRows]);
 
-  // 导出为 CSV
-  const handleExportCSV = () => {
-    const headers = ['Product ID', 'Lot ID', 'Product', 'Owner', 'Status', 'Progress', 'Created Date'];
-    const rows = filteredData.map(p => [
-      p.projectId,
-      p.lotId,
-      p.product,
-      p.owner,
-      p.status.toUpperCase(),
-      `${p.completedSteps}/${p.totalSteps}`,
-      p.createdDate
-    ]);
-    
-    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `test-records-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-  };
-
-  // 重置过滤器
   const handleResetFilters = () => {
     setSearchText("");
     setStatusFilter("all");
@@ -257,155 +278,343 @@ export default function ViewSearchPage({ userRole, handleEdit, handleDelete }) {
     setEndDate("");
   };
 
-  const onRowClicked = (event) => {
-    // 移除此功能，仅通过 Details 按钮打开
+  const statusCell = (p) => {
+    const colors = {
+      completed: { bg: "#d1fae5", text: "#065f46", label: "✓ COMPLETED" },
+      "in-process": { bg: "#ffedd5", text: "#9a3412", label: "⟳ IN-PROCESS" },
+      Init: { bg: "#f1f5f9", text: "#64748b", label: "○ INIT" },
+    };
+    const config = colors[p.value] || colors.Init;
+    return (
+      <span
+        style={{
+          backgroundColor: config.bg,
+          color: config.text,
+          padding: "4px 10px",
+          borderRadius: "4px",
+          fontSize: "11px",
+          fontWeight: "bold",
+        }}
+      >
+        {config.label}
+      </span>
+    );
   };
 
+  // ✅ Column order 기준: Status, Product ID, Lot ID, Product, Owner, Created Date, Status_Update_Time, Manage
+  // ✅ Progress removed
+  const columnDefs = useMemo(() => {
+    const cols = [
+      { headerName: "Status", field: "status", width: 120, cellRenderer: statusCell },
+      { headerName: "Product ID", field: "projectId", width: 140 },
+      { headerName: "Lot ID", field: "lotId", width: 140 },
+      { headerName: "Product", field: "product", width: 140 },
+      { headerName: "Owner", field: "owner", width: 120 },
+      { headerName: "Created Date", field: "createdDate", width: 160 },
+      { headerName: "Status_Update_Time", field: "statusUpdateTime", width: 180 },
+    ];
+
+    cols.push({
+      headerName: "Manage",
+      width: 170,
+      cellRenderer: (params) => (
+        <div style={{ display: "flex", gap: "6px" }}>
+          <button
+            className="btn-edit"
+            onClick={(e) => {
+              e.stopPropagation();
+              try {
+                if (typeof handleEdit === "function") handleEdit(params.data.projectId);
+              } catch (err) {}
+              openMasterEdit(params.data.projectId, params.data.lotId);
+            }}
+            title="Edit (Master Traveler)"
+          >
+            ✏️ Edit
+          </button>
+          <button
+            className="btn-delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm(`Are you sure you want to delete this item?`)) {
+                try {
+                  if (typeof handleDelete === "function") handleDelete(params.data.projectId);
+                } catch (err) {}
+                const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
+                const updatedData = (Array.isArray(data) ? data : []).filter(
+                  (proj) => proj?.header?.["Product ID"] !== params.data.projectId
+                );
+                localStorage.setItem("all_projects", JSON.stringify(updatedData));
+                loadAll();
+              }
+            }}
+            title="Delete project"
+          >
+            🗑️ Delete
+          </button>
+        </div>
+      ),
+    });
+
+    return cols;
+  }, [handleEdit, handleDelete, loadAll]);
+
+  // ---------- Master form view model ----------
+  // ✅ Form order 기준: follow LIST order (except Status). Then add the remaining create header fields (kept compact).
+  const masterHeaderKeys = useMemo(() => {
+    return [
+      // list order (except Status)
+      "Product ID",
+      "Lot ID",
+      "Product",
+      "Owner",
+      "Created Date",
+      "Status_Update_Time",
+      // remaining create fields (keep)
+      "Project Family",
+      "Version",
+      "QR",
+      "Remark",
+    ];
+  }, []);
+
+  const currentLot = useMemo(() => {
+    if (!editDraft) return null;
+    return (editDraft.lots || []).find((l) => l?.lotId === editLotId) || null;
+  }, [editDraft, editLotId]);
+
+  const stepFlat = useMemo(() => {
+    if (!currentLot) return [];
+    const out = [];
+    (currentLot.stresses || []).forEach((s, stressIdx) => {
+      const stressName = s?.stress || "";
+      (s?.rowData || []).forEach((row, rowIdx) => {
+        out.push({
+          stressIdx,
+          rowIdx,
+          stress: stressName,
+          operation: row?.operation || "",
+          condition: row?.condition || "",
+          startTime: row?.startTime || "",
+          endTime: row?.endTime || "",
+          remark: row?.remark || row?.Remark || "",
+        });
+      });
+    });
+    return out;
+  }, [currentLot]);
+
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 60px)', background: '#f0f4f8', overflow: 'hidden', flexDirection: 'column' }}>
-      
-      {/* ============ 頂部統計摘要區 ============ */}
-      <div style={{ background: 'white', padding: '10px 20px', borderBottom: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', marginBottom: '0px' }}>
-          <div 
+    <div
+      style={{
+        display: "flex",
+        height: "calc(100vh - 60px)",
+        background: "#f0f4f8",
+        overflow: "hidden",
+        flexDirection: "column",
+      }}
+    >
+      {/* ============ 頂部統計摘要區 (keep original vibe) ============ */}
+      <div
+        style={{
+          background: "white",
+          padding: "10px 20px",
+          borderBottom: "1px solid #e2e8f0",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+            gap: "8px",
+            marginBottom: "0px",
+          }}
+        >
+          <div
             className="kpi-card"
             onClick={() => setStatusFilter("all")}
-            style={{ cursor: 'pointer', opacity: statusFilter === "all" ? 1 : 0.6, borderColor: statusFilter === "all" ? '#3b82f6' : '#e2e8f0', borderWidth: statusFilter === "all" ? '2px' : '1px' }}
+            style={{
+              cursor: "pointer",
+              opacity: statusFilter === "all" ? 1 : 0.6,
+              borderColor: statusFilter === "all" ? "#3b82f6" : "#e2e8f0",
+              borderWidth: statusFilter === "all" ? "2px" : "1px",
+            }}
           >
             <div className="kpi-label">Total Tests</div>
             <div className="kpi-value">{cardStatistics.total}</div>
           </div>
-          <div 
+
+          <div
             className="kpi-card"
             onClick={() => setStatusFilter("completed")}
-            style={{ cursor: 'pointer', opacity: statusFilter === "completed" ? 1 : 0.6, borderColor: statusFilter === "completed" ? '#10b981' : '#e2e8f0', borderWidth: statusFilter === "completed" ? '2px' : '1px' }}
+            style={{
+              cursor: "pointer",
+              opacity: statusFilter === "completed" ? 1 : 0.6,
+              borderColor: statusFilter === "completed" ? "#10b981" : "#e2e8f0",
+              borderWidth: statusFilter === "completed" ? "2px" : "1px",
+            }}
           >
             <div className="kpi-label">Completed</div>
-            <div className="kpi-value" style={{ color: '#10b981' }}>{cardStatistics.completed}</div>
+            <div className="kpi-value" style={{ color: "#10b981" }}>
+              {cardStatistics.completed}
+            </div>
           </div>
-          <div 
+
+          <div
             className="kpi-card"
             onClick={() => setStatusFilter("in-process")}
-            style={{ cursor: 'pointer', opacity: statusFilter === "in-process" ? 1 : 0.6, borderColor: statusFilter === "in-process" ? '#f59e0b' : '#e2e8f0', borderWidth: statusFilter === "in-process" ? '2px' : '1px' }}
+            style={{
+              cursor: "pointer",
+              opacity: statusFilter === "in-process" ? 1 : 0.6,
+              borderColor: statusFilter === "in-process" ? "#f59e0b" : "#e2e8f0",
+              borderWidth: statusFilter === "in-process" ? "2px" : "1px",
+            }}
           >
             <div className="kpi-label">In-Process</div>
-            <div className="kpi-value" style={{ color: '#f59e0b' }}>{cardStatistics.inProcess}</div>
+            <div className="kpi-value" style={{ color: "#f59e0b" }}>
+              {cardStatistics.inProcess}
+            </div>
           </div>
-          <div 
+
+          <div
             className="kpi-card"
             onClick={() => setStatusFilter("Init")}
-            style={{ cursor: 'pointer', opacity: statusFilter === "Init" ? 1 : 0.6, borderColor: statusFilter === "Init" ? '#64748b' : '#e2e8f0', borderWidth: statusFilter === "Init" ? '2px' : '1px' }}
+            style={{
+              cursor: "pointer",
+              opacity: statusFilter === "Init" ? 1 : 0.6,
+              borderColor: statusFilter === "Init" ? "#64748b" : "#e2e8f0",
+              borderWidth: statusFilter === "Init" ? "2px" : "1px",
+            }}
           >
             <div className="kpi-label">Init</div>
-            <div className="kpi-value" style={{ color: '#94a3b8' }}>{cardStatistics.init}</div>
+            <div className="kpi-value" style={{ color: "#94a3b8" }}>
+              {cardStatistics.init}
+            </div>
           </div>
-          <div 
-            className="kpi-card"
-            style={{ cursor: 'default' }}
-          >
+
+          <div className="kpi-card" style={{ cursor: "default" }}>
             <div className="kpi-label">Pass Rate</div>
-            <div className="kpi-value" style={{ color: '#3b82f6' }}>{globalStatistics.passRate}%</div>
+            <div className="kpi-value" style={{ color: "#3b82f6" }}>
+              {globalStatistics.passRate}%
+            </div>
           </div>
-          <div 
-            className="kpi-card"
-            style={{ cursor: 'default' }}
-          >
+
+          <div className="kpi-card" style={{ cursor: "default" }}>
             <div className="kpi-label">Total Steps</div>
-            <div className="kpi-value">{globalStatistics.completedSteps}/{globalStatistics.totalSteps}</div>
+            <div className="kpi-value">
+              {globalStatistics.completedSteps}/{globalStatistics.totalSteps}
+            </div>
           </div>
         </div>
       </div>
 
       {/* ============ 搜索與篩選區域 ============ */}
-      <div style={{ background: 'white', padding: '10px 20px', borderBottom: '1px solid #e2e8f0' }}>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          {/* 搜尋欄 */}
-          <div style={{ flex: '1', minWidth: '200px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#475569', marginBottom: '6px' }}>
-              🔍 Search (ID / Product / Owner)
+      <div style={{ background: "white", padding: "10px 20px", borderBottom: "1px solid #e2e8f0" }}>
+        <div style={{ display: "flex", gap: "10px", alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div style={{ flex: "1", minWidth: "240px" }}>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+              🔍 Search (ID / Lot / Product / Owner)
             </label>
             <input
               type="text"
-              placeholder="Search Project, Lot, or Product..."
+              placeholder="Search..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                fontSize: '13px',
-                boxSizing: 'border-box',
-                transition: 'border-color 0.2s'
+                width: "100%",
+                padding: "8px 12px",
+                border: "1px solid #cbd5e1",
+                borderRadius: "6px",
+                fontSize: "13px",
+                boxSizing: "border-box",
+                transition: "border-color 0.2s",
               }}
-              onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-              onBlur={(e) => e.target.style.borderColor = '#cbd5e1'}
+              onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
+              onBlur={(e) => (e.target.style.borderColor = "#cbd5e1")}
             />
           </div>
 
-          {/* 進階篩選按鈕 */}
-          <button 
+          <button
             className="filter-toggle-btn"
             onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-            style={{ background: showAdvancedFilter ? '#3b82f6' : '#f1f5f9', color: showAdvancedFilter ? 'white' : '#475569' }}
+            style={{
+              background: showAdvancedFilter ? "#3b82f6" : "#f1f5f9",
+              color: showAdvancedFilter ? "white" : "#475569",
+            }}
           >
             ⚙️ Advanced
           </button>
 
-          {/* 重置按鈕 */}
-          <button 
-            className="reset-btn"
-            onClick={handleResetFilters}
-            title="Reset all filters"
-          >
+          <button className="reset-btn" onClick={handleResetFilters} title="Reset all filters">
             ⟲ Reset
           </button>
         </div>
 
-        {/* 進階篩選面板 */}
         {showAdvancedFilter && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e2e8f0' }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gap: "10px",
+              marginTop: "8px",
+              paddingTop: "8px",
+              borderTop: "1px solid #e2e8f0",
+            }}
+          >
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#475569', marginBottom: '6px' }}>Start Date</label>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                Start Date
+              </label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box' }}
+                style={{ width: "100%", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#475569', marginBottom: '6px' }}>End Date</label>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                End Date
+              </label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box' }}
+                style={{ width: "100%", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#475569', marginBottom: '6px' }}>Owner</label>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                Owner
+              </label>
               <select
                 value={ownerFilter}
                 onChange={(e) => setOwnerFilter(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box' }}
+                style={{ width: "100%", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
               >
                 <option value="all">All Owners</option>
-                {owners.map(owner => (
-                  <option key={owner} value={owner}>{owner}</option>
+                {owners.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#475569', marginBottom: '6px' }}>Product</label>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+                Product
+              </label>
               <select
                 value={productFilter}
                 onChange={(e) => setProductFilter(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box' }}
+                style={{ width: "100%", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
               >
                 <option value="all">All Products</option>
-                {products.map(product => (
-                  <option key={product} value={product}>{product}</option>
+                {products.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
                 ))}
               </select>
             </div>
@@ -414,13 +623,12 @@ export default function ViewSearchPage({ userRole, handleEdit, handleDelete }) {
       </div>
 
       {/* ============ 主要表格區域 ============ */}
-      <div style={{ flex: 1, display: 'flex', minWidth: 0, overflow: 'hidden' }}>
-        {/* 左側表格 */}
-        <div style={{ flex: 1, padding: '16px 20px', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-          <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>
-            📊 Showing {filteredData.length} of {allProjects.length} tests
+      <div style={{ flex: 1, display: "flex", minWidth: 0, overflow: "hidden" }}>
+        <div style={{ flex: 1, padding: "16px 20px", display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+          <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px", fontWeight: 500 }}>
+            📊 Showing {filteredData.length} of {allRows.length} tests
           </div>
-          <div className="ag-theme-alpine compact-grid" style={{ flex: 1, width: '100%' }}>
+          <div className="ag-theme-alpine compact-grid" style={{ flex: 1, width: "100%" }}>
             <AgGridReact
               rowData={filteredData}
               columnDefs={columnDefs}
@@ -430,326 +638,462 @@ export default function ViewSearchPage({ userRole, handleEdit, handleDelete }) {
               rowHeight={44}
               headerHeight={40}
               rowClass="grid-row"
-              onRowClicked={onRowClicked}
             />
           </div>
         </div>
-
-        {/* 右側詳細側邊欄 */}
-        {selectedLot && (
-          <div className="detail-sidebar">
-            <div className="sidebar-header">
-              <div>
-                <div style={{ fontSize: '11px', opacity: 0.8 }}>📋 LOT DETAILS</div>
-                <h3 style={{ margin: 0, fontSize: '16px' }}>{selectedLot.lotId}</h3>
-                <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '6px' }}>Product: <strong>{selectedLot.projectId}</strong></div>
-                <div style={{ fontSize: '10px', opacity: 0.7 }}>Owner: <strong>{selectedLot.owner}</strong></div>
-                <div style={{ fontSize: '10px', opacity: 0.7 }}>Created: <strong>{selectedLot.createdDate}</strong></div>
-                <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '4px' }}>
-                  Progress: <strong>{selectedLot.completedSteps}/{selectedLot.totalSteps}</strong>
-                </div>
-              </div>
-              <button className="close-btn" onClick={() => setSelectedLot(null)}>×</button>
-            </div>
-            
-            <div className="sidebar-content">
-              {selectedLot.stresses.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
-                  <div style={{ fontSize: '14px', marginBottom: '8px' }}>No stress data</div>
-                  <div style={{ fontSize: '12px' }}>This lot has no stress tests yet.</div>
-                </div>
-              ) : (
-                selectedLot.stresses.map((s, idx) => (
-                  <div key={idx} className="stress-card">
-                    <div className="stress-title">
-                      🔬 Stress: {s.stress}
-                    </div>
-                    {s.rowData && s.rowData.length > 0 ? (
-                      s.rowData.map((row, rIdx) => (
-                        <div key={rIdx} className="step-item">
-                          <div className="step-row">
-                            <span className="op-text">{row.operation}</span>
-                            <span className={row.endTime ? 'status-tag finished' : 'status-tag pending'}>
-                              {row.endTime ? '✓ Finished' : '⏳ Pending'}
-                            </span>
-                          </div>
-                          <div className="cond-text">Condition: {row.condition}</div>
-                          <div className="time-row">
-                            <span>📍 In: {row.startTime || '-'}</span>
-                            <span>📍 Out: {row.endTime || '-'}</span>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ padding: '12px 15px', color: '#94a3b8', fontSize: '12px' }}>No steps recorded</div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
+      {/* ============ Master Edit Modal (ONE PAGE, no internal search) ============ */}
+      {isEditOpen && editDraft && (
+        <div
+          className="master-modal-overlay"
+          onMouseDown={(e) => {
+            if (e.target.classList.contains("master-modal-overlay")) closeMasterEdit();
+          }}
+        >
+          <div className="master-modal" role="dialog" aria-modal="true">
+            <div className="master-modal-header">
+              <div>
+                <div className="master-modal-subtitle">MASTER TRAVELER</div>
+                <div className="master-modal-title">
+                  Product ID: <strong>{editDraft?.header?.["Product ID"] || "-"}</strong> &nbsp; | &nbsp; Lot: <strong>{editLotId || "-"}</strong>
+                </div>
+              </div>
+              <button className="master-close-btn" onClick={closeMasterEdit} title="Close">
+                ×
+              </button>
+            </div>
+
+            <div className="master-modal-body">
+              {editError && <div className="master-error">{editError}</div>}
+
+              {/* ONE PAGE: Header fields (compact, order follows LIST columns first) */}
+              <div className="master-section">
+                <div className="master-section-title">Project Information</div>
+
+                <div className="master-form-grid">
+                  {masterHeaderKeys.map((k) => {
+                    // Lot ID is from lot, not header
+                    const isLotId = k === "Lot ID";
+                    const isReadonly = k === "Status_Update_Time" || isLotId;
+
+                    const val = isLotId ? (editLotId || "") : ((editDraft?.header || {})[k] || "");
+
+                    const label = k === "Status_Update_Time" ? "Status_Update_Time (Auto)" : k;
+
+                    // Created Date might be blank in header; allow edit to keep sync (your data sometimes in proj.createdAt)
+                    // We keep editable unless you later want lock.
+                    return (
+                      <div key={k} className="master-field">
+                        <label className="master-label">{label}</label>
+
+                        {k === "Remark" ? (
+                          <textarea
+                            className={`master-input master-textarea ${isReadonly ? "readonly" : ""}`}
+                            value={val}
+                            disabled={isReadonly}
+                            onChange={(e) => updateHeaderField(k, e.target.value)}
+                          />
+                        ) : (
+                          <input
+                            className={`master-input ${isReadonly ? "readonly" : ""}`}
+                            value={val}
+                            disabled={isReadonly}
+                            onChange={(e) => {
+                              if (isLotId) return;
+                              updateHeaderField(k, e.target.value);
+                            }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Steps / Operation Records (no Qty/Hardware) */}
+              <div className="master-section" style={{ marginTop: 12 }}>
+                <div className="master-section-title">Operation Records (Check In / Out)</div>
+
+                {!currentLot ? (
+                  <div className="master-empty">No lot data found.</div>
+                ) : stepFlat.length === 0 ? (
+                  <div className="master-empty">No steps recorded.</div>
+                ) : (
+                  <div className="master-steps-wrap">
+                    <table className="master-steps-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 120 }}>Lot</th>
+                          <th style={{ width: 140 }}>Stress</th>
+                          <th>Operation</th>
+                          <th>Condition</th>
+                          <th style={{ width: 160 }}>Check In</th>
+                          <th style={{ width: 160 }}>Check Out</th>
+                          <th style={{ width: 220 }}>Remark</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stepFlat.map((r, idx) => (
+                          <tr key={idx}>
+                            <td className="readonly-cell">{editLotId}</td>
+                            <td className="readonly-cell">{r.stress}</td>
+                            <td>
+                              <input className="cell-input" value={r.operation} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "operation", e.target.value)} />
+                            </td>
+                            <td>
+                              <input className="cell-input" value={r.condition} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "condition", e.target.value)} />
+                            </td>
+                            <td>
+                              <input className="cell-input" value={r.startTime} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "startTime", e.target.value)} />
+                            </td>
+                            <td>
+                              <input className="cell-input" value={r.endTime} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "endTime", e.target.value)} />
+                            </td>
+                            <td>
+                              <input className="cell-input" value={r.remark} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "remark", e.target.value)} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    <div className="master-note">
+                      • This page edits the same data used by Check In / Out (localStorage: <code>all_projects</code>).
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="master-modal-footer">
+              <div className="footer-left">
+                <div className="footer-hint">Status_Update_Time will be updated automatically on save.</div>
+              </div>
+              <div className="footer-right">
+                <button className="btn-secondary" onClick={closeMasterEdit}>
+                  Cancel
+                </button>
+                <button className="btn-primary" onClick={saveMasterEdit}>
+                  Save & Update
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
-        /* KPI 卡片 */
-        .kpi-card {
+        /* KPI 卡片 (restore your original style vibe) */
+        .kpi-card{
           background: linear-gradient(135deg, #f8fafc 0%, #eef2f5 100%);
-          padding: 10px 12px;
-          border-radius: 8px;
-          border: 1px solid #e2e8f0;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-          transition: all 0.3s;
+          padding:10px 12px;
+          border-radius:8px;
+          border:1px solid #e2e8f0;
+          box-shadow:0 2px 4px rgba(0,0,0,0.02);
+          transition:all .3s;
         }
-        .kpi-card:hover {
-          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-          border-color: #cbd5e1;
-          transform: translateY(-2px);
+        .kpi-card:hover{
+          box-shadow:0 4px 12px rgba(0,0,0,0.08);
+          border-color:#cbd5e1;
+          transform:translateY(-2px);
         }
-        .kpi-label {
-          font-size: 11px;
-          color: #64748b;
-          font-weight: 600;
-          margin-bottom: 4px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
+        .kpi-label{
+          font-size:11px;
+          color:#64748b;
+          font-weight:600;
+          margin-bottom:4px;
+          text-transform:uppercase;
+          letter-spacing:.5px
         }
-        .kpi-value {
-          font-size: 20px;
-          font-weight: bold;
-          color: #1e293b;
-        }
+        .kpi-value{font-size:20px;font-weight:bold;color:#1e293b}
 
         /* 篩選按鈕 */
-        .filter-btn, .filter-toggle-btn, .export-btn, .reset-btn {
-          padding: 8px 14px;
-          border: 1px solid #cbd5e1;
-          border-radius: 6px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s;
-          white-space: nowrap;
+        .filter-toggle-btn, .reset-btn{
+          padding:8px 14px;
+          border:1px solid #cbd5e1;
+          border-radius:6px;
+          font-size:12px;
+          font-weight:600;
+          cursor:pointer;
+          transition:all .2s;
+          white-space:nowrap;
         }
-        .filter-btn:hover, .filter-toggle-btn:hover, .export-btn:hover, .reset-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        .filter-toggle-btn{border:none}
+        .reset-btn{
+          background:#94a3b8;
+          color:white;
+          border:none;
         }
-        .filter-toggle-btn {
-          border: none;
-        }
-        .export-btn {
-          background: #10b981;
-          color: white;
-          border: none;
-        }
-        .reset-btn {
-          background: #94a3b8;
-          color: white;
-          border: none;
+        .filter-toggle-btn:hover, .reset-btn:hover{
+          transform:translateY(-2px);
+          box-shadow:0 4px 8px rgba(0,0,0,0.1);
         }
 
         /* 表格格線優化 */
-        .compact-grid .ag-cell {
-          border-right: 1px solid #e2e8f0 !important;
-          display: flex;
-          align-items: center;
+        .compact-grid .ag-cell{
+          border-right:1px solid #e2e8f0!important;
+          display:flex;
+          align-items:center;
         }
-        .compact-grid .ag-header-cell {
-          border-right: 1px solid #cbd5e1 !important;
+        .compact-grid .ag-header-cell{
+          border-right:1px solid #cbd5e1!important;
           background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%) !important;
-          font-weight: 700;
-          color: #334155;
+          font-weight:700;
+          color:#334155;
         }
-        .compact-grid .ag-row {
-          border-bottom: 1px solid #e2e8f0 !important;
-          transition: background-color 0.2s;
+        .compact-grid .ag-row{
+          border-bottom:1px solid #e2e8f0!important;
+          transition:background-color .2s;
         }
-        .compact-grid .ag-row:hover {
-          background-color: #f8fafc !important;
+        .compact-grid .ag-row:hover{background-color:#f8fafc!important}
+        .grid-row:hover{background-color:#f0f4f8!important}
+
+        /* 管理按鈕 (keep your original colors) */
+        .btn-edit, .btn-delete{
+          padding:6px 10px;
+          border:none;
+          border-radius:5px;
+          font-size:11px;
+          font-weight:600;
+          cursor:pointer;
+          transition:all .2s;
         }
-        .grid-row:hover {
-          background-color: #f0f4f8 !important;
+        .btn-edit{
+          background:#3b82f6;
+          color:white;
+        }
+        .btn-edit:hover{
+          background:#2563eb;
+          transform:translateY(-1px);
+        }
+        .btn-delete{
+          background:#ef4444;
+          color:white;
+        }
+        .btn-delete:hover{
+          background:#dc2626;
+          transform:translateY(-1px);
         }
 
-        /* 詳細按鈕 */
-        .detail-btn {
-          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-          color: white;
-          border: none;
-          padding: 6px 12px;
-          border-radius: 5px;
-          font-size: 11px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s;
-          box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+        /* ===== MASTER MODAL (simple, not too colorful) ===== */
+        .master-modal-overlay{
+          position:fixed; inset:0;
+          background:rgba(15,23,42,0.55);
+          display:flex; align-items:center; justify-content:center;
+          padding:20px;
+          z-index:9999;
         }
-        .detail-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        .master-modal{
+          width:min(1180px, 96vw);
+          height:min(86vh, 920px);
+          background:#fff;
+          border-radius:12px;
+          box-shadow:0 30px 80px rgba(0,0,0,0.35);
+          display:flex;
+          flex-direction:column;
+          overflow:hidden;
         }
-
-        /* 管理按鈕 */
-        .btn-edit, .btn-delete {
-          padding: 6px 10px;
-          border: none;
-          border-radius: 5px;
-          font-size: 11px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s;
+        .master-modal-header{
+          padding:14px 16px;
+          border-bottom:1px solid #e5e7eb;
+          display:flex;
+          justify-content:space-between;
+          align-items:flex-start;
+          background:#fff;
         }
-        .btn-edit {
-          background: #3b82f6;
-          color: white;
+        .master-modal-subtitle{
+          font-size:11px;
+          font-weight:800;
+          color:#64748b;
+          letter-spacing:.6px;
         }
-        .btn-edit:hover {
-          background: #2563eb;
-          transform: translateY(-1px);
+        .master-modal-title{
+          margin-top:4px;
+          font-size:14px;
+          font-weight:700;
+          color:#111827;
         }
-        .btn-delete {
-          background: #ef4444;
-          color: white;
+        .master-close-btn{
+          width:34px;height:34px;
+          border-radius:10px;
+          border:1px solid #e5e7eb;
+          background:#fff;
+          color:#111827;
+          font-size:22px;
+          cursor:pointer;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          transition:.15s;
         }
-        .btn-delete:hover {
-          background: #dc2626;
-          transform: translateY(-1px);
+        .master-close-btn:hover{
+          background:#f8fafc;
+          transform:translateY(-1px);
         }
-
-        /* 側邊欄樣式 */
-        .detail-sidebar {
-          width: 330px;
-          background: white;
-          box-shadow: -5px 0 25px rgba(0,0,0,0.12);
-          border-left: 1px solid #e2e8f0;
-          display: flex;
-          flex-direction: column;
-          animation: slideIn 0.3s ease-out;
+        .master-modal-body{
+          padding:14px 16px;
+          overflow:auto;
+          background:#fff;
         }
-        @keyframes slideIn {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
+        .master-error{
+          background:#fef2f2;
+          border:1px solid #fecaca;
+          color:#7f1d1d;
+          padding:10px 12px;
+          border-radius:10px;
+          font-size:12px;
+          font-weight:700;
+          margin-bottom:12px;
         }
-        .sidebar-header {
-          padding: 18px 20px;
-          background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-          color: white;
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          border-bottom: 2px solid #0f172a;
+        .master-section{
+          border:1px solid #e5e7eb;
+          border-radius:12px;
+          padding:12px;
+          background:#fff;
         }
-        .close-btn {
-          background: rgba(255,255,255,0.15);
-          border: none;
-          color: white;
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          cursor: pointer;
-          font-size: 24px;
-          transition: all 0.2s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-        .close-btn:hover {
-          background: rgba(255,255,255,0.25);
-          transform: rotate(90deg);
-        }
-        .sidebar-content {
-          flex: 1;
-          overflow-y: auto;
-          padding: 20px;
-          background: #f8fafc;
-        }
-        .stress-card {
-          background: white;
-          border-radius: 8px;
-          border: 1px solid #e2e8f0;
-          margin-bottom: 16px;
-          overflow: hidden;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-          transition: all 0.2s;
-        }
-        .stress-card:hover {
-          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-          border-color: #cbd5e1;
-        }
-        .stress-title {
-          background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-          padding: 12px 15px;
-          font-weight: 700;
-          font-size: 13px;
-          color: #1e293b;
-          border-bottom: 2px solid #cbd5e1;
-        }
-        .step-item {
-          padding: 12px 15px;
-          border-bottom: 1px solid #f1f5f9;
-          transition: background 0.2s;
-        }
-        .step-item:last-child {
-          border-bottom: none;
-        }
-        .step-item:hover {
-          background: #f8fafc;
-        }
-        .step-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 6px;
-        }
-        .op-text { 
-          font-weight: 600; 
-          color: #1e293b; 
-          font-size: 12px; 
-        }
-        .status-tag { 
-          font-size: 11px; 
-          padding: 3px 8px; 
-          border-radius: 12px; 
-          font-weight: 700;
-        }
-        .status-tag.finished { 
-          background: #d1fae5; 
-          color: #065f46; 
-        }
-        .status-tag.pending { 
-          background: #ffedd5; 
-          color: #9a3412; 
-        }
-        .cond-text { 
-          color: #64748b; 
-          font-size: 11px; 
-          margin-bottom: 6px; 
-          font-weight: 500;
-        }
-        .time-row { 
-          display: flex; 
-          gap: 16px; 
-          font-size: 10px; 
-          color: #94a3b8;
-          margin-top: 6px;
+        .master-section-title{
+          font-size:12px;
+          font-weight:800;
+          color:#111827;
+          margin-bottom:8px;
+          letter-spacing:.2px;
         }
 
-        /* 滾動條美化 */
-        .sidebar-content::-webkit-scrollbar {
-          width: 6px;
+        /* compact header grid */
+        .master-form-grid{
+          display:grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap:8px 10px;
         }
-        .sidebar-content::-webkit-scrollbar-track {
-          background: #f1f5f9;
+        @media (max-width: 1100px){
+          .master-form-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
         }
-        .sidebar-content::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 3px;
+        @media (max-width: 860px){
+          .master-form-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
-        .sidebar-content::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
+        @media (max-width: 560px){
+          .master-form-grid{ grid-template-columns: 1fr; }
         }
+        .master-field{
+          display:flex;
+          flex-direction:column;
+          gap:5px;
+          min-width:0;
+        }
+        .master-label{
+          font-size:11px;
+          font-weight:700;
+          color:#475569;
+          white-space:nowrap;
+          overflow:hidden;
+          text-overflow:ellipsis;
+        }
+        .master-input{
+          border:1px solid #cbd5e1;
+          border-radius:8px;
+          padding:7px 9px;
+          font-size:12px;
+          outline:none;
+        }
+        .master-input:focus{ border-color:#3b82f6; }
+        .master-textarea{ min-height:34px; resize:vertical; }
+        .master-input.readonly{
+          background:#f8fafc;
+          color:#475569;
+        }
+
+        .master-empty{
+          padding:12px;
+          font-size:12px;
+          color:#64748b;
+          font-weight:600;
+        }
+
+        .master-steps-wrap{ overflow:auto; }
+        .master-steps-table{
+          width:100%;
+          border-collapse:collapse;
+          font-size:12px;
+        }
+        .master-steps-table th{
+          text-align:left;
+          padding:9px 9px;
+          background:#f8fafc;
+          border-bottom:1px solid #e5e7eb;
+          color:#111827;
+          font-weight:800;
+          white-space:nowrap;
+        }
+        .master-steps-table td{
+          border-bottom:1px solid #f1f5f9;
+          padding:7px 9px;
+          vertical-align:middle;
+        }
+        .readonly-cell{
+          background:#fafafa;
+          color:#475569;
+          font-weight:700;
+          white-space:nowrap;
+        }
+        .cell-input{
+          width:100%;
+          border:1px solid transparent;
+          border-radius:8px;
+          padding:7px 8px;
+          font-size:12px;
+          background:#fff;
+          outline:none;
+        }
+        .cell-input:focus{
+          border-color:#3b82f6;
+          box-shadow:0 0 0 2px rgba(59,130,246,0.10);
+        }
+        .master-note{
+          margin-top:8px;
+          font-size:11px;
+          color:#64748b;
+          font-weight:600;
+        }
+        .master-note code{
+          background:#f1f5f9;
+          padding:2px 6px;
+          border-radius:8px;
+          color:#111827;
+        }
+
+        .master-modal-footer{
+          padding:10px 16px;
+          border-top:1px solid #e5e7eb;
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:10px;
+          background:#fff;
+        }
+        .footer-hint{ font-size:11px; color:#64748b; font-weight:700; }
+        .footer-right{ display:flex; gap:10px; }
+        .btn-secondary{
+          padding:8px 12px;
+          border-radius:10px;
+          border:1px solid #cbd5e1;
+          background:#fff;
+          font-size:12px;
+          font-weight:800;
+          cursor:pointer;
+        }
+        .btn-secondary:hover{ background:#f8fafc; transform:translateY(-1px); }
+        .btn-primary{
+          padding:8px 12px;
+          border-radius:10px;
+          border:1px solid #3b82f6;
+          background:#3b82f6;
+          color:#fff;
+          font-size:12px;
+          font-weight:800;
+          cursor:pointer;
+        }
+        .btn-primary:hover{ background:#2563eb; transform:translateY(-1px); }
       `}</style>
     </div>
   );
