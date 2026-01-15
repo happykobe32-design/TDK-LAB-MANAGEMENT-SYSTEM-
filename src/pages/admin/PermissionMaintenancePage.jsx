@@ -1,208 +1,230 @@
 import React, { useState } from "react";
-import { 
-  ShieldCheck, Users, Activity, Clock, 
-  UserCheck, AlertTriangle, ExternalLink, Search, Filter 
-} from "lucide-react";
 
 export default function PermissionMaintenancePage() {
-  /* =====================================================
-     Section 1 - 角色權限矩陣 (依據規劃書角色定義)
-     ===================================================== */
-  const ROLE_MATRIX = [
-    { feature: "Create Project (Runcard)", admin: true, engineer: true, technician: false },
-    { feature: "Stress Test Setup", admin: true, engineer: "Limited", technician: false },
-    { feature: "Standard Check-In / Out", admin: true, engineer: "Backup", technician: true },
-    { feature: "Abnormal Data Unlock", admin: true, engineer: true, technician: false },
-    { feature: "Permission & Config Edit", admin: true, engineer: false, technician: false },
-  ];
-
-  /* =====================================================
-     Section 2 - 用戶與責任管理 (加入 Last Known Task)
-     ===================================================== */
-  const [users, setUsers] = useState([
-    { id: "admin_01", name: "System Admin", role: "admin", active: true, lastTask: "System Config" },
-    { id: "eng_wang", name: "Wang (Lead)", role: "engineer", active: true, lastTask: "PJT-Stress-001" },
-    { id: "tech_john", name: "John Doe", role: "technician", active: true, lastTask: "PJT-Stress-001" },
-  ]);
-
-  /* =====================================================
-     Section 3 - 高細節原子級稽核日誌 (核心抓錯區)
-     ===================================================== */
-  const [logs] = useState([
-    { 
-      time: "2026-01-12 14:05:12.450", 
-      project: "PJT-Stress-001", 
-      step: "High-Temp Stress", 
-      action: "CHECK-OUT", 
-      operator: "tech_john", 
-      owner: "eng_wang", // 關聯創建專案的工程師
-      status: "Success",
-      eqID: "EQ-HT-04" 
-    },
-    { 
-      time: "2026-01-12 16:30:05.112", 
-      project: "PJT-Stress-001", 
-      step: "High-Temp Stress", 
-      action: "CHECK-IN", 
-      operator: "tech_john", 
-      owner: "eng_wang", 
-      status: "Error", 
-      note: "Temp fluctuation > 5°C", // 紀錄報警原因
-      eqID: "EQ-HT-04" 
-    },
-  ]);
+  // 1. 分頁控制：'audit' (看誰做了什麼) | 'access' (設定誰能做什麼)
+  const [activeTab, setActiveTab] = useState("audit");
 
   return (
-    <div className="container-xl mt-4 pb-5 font-sans">
-      
-      {/* 標題區 */}
-      <div className="mb-4 d-flex justify-content-between align-items-end">
-        <div>
-          <h2 className="fw-bold d-flex align-items-center gap-2">
-            <ShieldCheck className="text-primary" /> Permission & Traceability
-          </h2>
-          <p className="text-muted mb-0">追蹤每個 Stress 測試步驟的執行者與負責工程師</p>
-        </div>
-      </div>
-
-      <div className="row">
-        {/* 左側：權限矩陣 */}
-        <div className="col-lg-5 mb-4">
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-header bg-white fw-bold">Role Permission Matrix</div>
-            <div className="table-responsive">
-              <table className="table table-sm mb-0 text-center align-middle">
-                <thead className="table-light">
-                  <tr className="text-xs">
-                    <th className="text-start ps-3">Feature</th>
-                    <th>ADM</th><th>ENG</th><th>TEC</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ROLE_MATRIX.map((r, i) => (
-                    <tr key={i}>
-                      <td className="text-start ps-3 text-sm fw-medium">{r.feature}</td>
-                      <td>{renderPermission(r.admin)}</td>
-                      <td>{renderPermission(r.engineer)}</td>
-                      <td>{renderPermission(r.technician)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        {/* 右側：用戶狀態 (誰目前在做什麼) */}
-        <div className="col-lg-7 mb-4">
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-header bg-white fw-bold d-flex justify-content-between">
-              <span>Active User & Role Control</span>
-              <button className="btn btn-xs btn-outline-primary py-0 text-xs">Add User</button>
-            </div>
-            <div className="table-responsive">
-              <table className="table table-sm mb-0 align-middle">
-                <thead className="table-light">
-                  <tr className="text-xs">
-                    <th className="ps-3">User ID</th>
-                    <th>Role</th>
-                    <th>Current/Last Task</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(u => (
-                    <tr key={u.id}>
-                      <td className="ps-3 fw-bold text-sm">{u.id}</td>
-                      <td><span className={`badge text-xs ${u.role === 'admin' ? 'bg-danger' : 'bg-primary'}`}>{u.role}</span></td>
-                      <td className="text-sm text-muted">{u.lastTask}</td>
-                      <td>
-                        <div className="form-check form-switch">
-                          <input className="form-check-input" type="checkbox" checked={u.active} readOnly />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 下方：原子級稽核日誌 (重點改動) */}
-      <div className="card shadow-sm border-0">
-        <div className="card-header bg-white d-flex justify-content-between align-items-center py-3">
-          <div className="d-flex align-items-center gap-2 fw-bold">
-            <Activity className="text-warning" size={20} />
-            Stress Test Atomic Logs
-          </div>
-          <div className="d-flex gap-2">
-            <div className="input-group input-group-sm">
-              <span className="input-group-text bg-light border-0"><Search size={14}/></span>
-              <input type="text" className="form-control border-0 bg-light" placeholder="Search Account/PJT..." />
-            </div>
-          </div>
-        </div>
+    <div className="container-fluid py-4 bg-light min-h-screen">
+      <div className="container-xl shadow-sm bg-white rounded-4 overflow-hidden p-0">
         
-        <div className="table-responsive">
-          <table className="table table-hover mb-0 align-middle">
-            <thead className="table-light">
-              <tr className="text-xs text-muted">
-                <th className="ps-4">TIMESTAMP (MS)</th>
-                <th>PROJECT & STEP</th>
-                <th>EQUIPMENT</th>
-                <th>OPERATOR (TEC)</th>
-                <th>OWNER (ENG)</th>
-                <th>STATUS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((l, i) => (
-                <tr key={i} className={l.status === 'Error' ? 'table-danger-light' : ''}>
-                  <td className="ps-4">
-                    <div className="d-flex align-items-center gap-1 text-xs">
-                      <Clock size={12} className="text-muted" /> {l.time}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="fw-bold">{l.project}</div>
-                    <div className="text-xs text-primary">{l.step}</div>
-                  </td>
-                  <td><span className="badge bg-light text-dark border">{l.eqID}</span></td>
-                  <td>
-                    <div className="d-flex align-items-center gap-1">
-                      <UserCheck size={14} className="text-success" /> {l.operator}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="text-muted text-sm italic">Created by {l.owner}</div>
-                  </td>
-                  <td>
-                    {l.status === 'Success' ? (
-                      <span className="badge bg-success-soft text-success px-2">PASS</span>
-                    ) : (
-                      <div className="d-flex flex-column">
-                        <span className="badge bg-danger-soft text-danger px-2 w-fit">FAIL</span>
-                        <small className="text-danger font-bold" style={{fontSize: '10px'}}>{l.note}</small>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* --- Google Style Header & Tabs --- */}
+        <div className="px-4 pt-4 border-bottom bg-white">
+          <div className="d-flex align-items-center mb-3">
+            <div className="bg-primary bg-opacity-10 p-2 rounded-3 me-3">
+              <span className="fs-4">🛡️</span>
+            </div>
+            <div>
+              <h4 className="fw-bold mb-0">系統稽核與權限管理</h4>
+              <p className="text-muted small mb-0">管理公司帳號權限並追蹤每一站測試步驟的詳細歷程</p>
+            </div>
+          </div>
+          
+          <ul className="nav nav-tabs border-0">
+            <li className="nav-item">
+              <button
+                className={`nav-link px-4 py-2 border-0 ${activeTab === "audit" ? "border-bottom border-primary border-3 text-primary fw-bold" : "text-secondary opacity-75"}`}
+                onClick={() => setActiveTab("audit")}
+                style={{ background: 'transparent' }}
+              >
+                操作稽核日誌 (Live Logs)
+              </button>
+            </li>
+            <li className="nav-item">
+              <button
+                className={`nav-link px-4 py-2 border-0 ${activeTab === "access" ? "border-bottom border-primary border-3 text-primary fw-bold" : "text-secondary opacity-75"}`}
+                onClick={() => setActiveTab("access")}
+                style={{ background: 'transparent' }}
+              >
+                帳號權限配置 (Account Settings)
+              </button>
+            </li>
+          </ul>
         </div>
-        <div className="card-footer bg-white text-center py-2">
-          <button className="btn btn-link btn-sm text-decoration-none text-muted">View Full History Report <ExternalLink size={12}/></button>
+
+        {/* --- 內容區域 --- */}
+        <div className="p-4 bg-white">
+          {activeTab === "audit" ? <AuditLogSection /> : <AccountAccessSection />}
         </div>
       </div>
     </div>
   );
 }
 
-function renderPermission(val) {
-  if (val === true) return <span className="text-success">✔</span>;
-  if (val === false) return <span className="text-danger text-opacity-25">✖</span>;
-  return <span className="badge bg-warning-soft text-warning text-xs">{val}</span>;
+/* =====================================================
+   分頁一：操作稽核 (查看誰做、什麼步驟、時間)
+   ===================================================== */
+function AuditLogSection() {
+  return (
+    <div className="animate-fade-in">
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div className="d-flex gap-2">
+          {/* 未來連接 API：這些參數會傳給後端做過濾 */}
+          <input type="text" className="form-control form-control-sm border-gray" style={{ width: '280px' }} placeholder="搜尋 ID、Runcard 或具體動作..." />
+          <select className="form-select form-select-sm border-gray" style={{ width: '130px' }}>
+            <option>所有角色</option>
+            <option>Engineer</option>
+            <option>Technician</option>
+          </select>
+          <input type="date" className="form-control form-control-sm border-gray" />
+        </div>
+        <button className="btn btn-light btn-sm border text-secondary fw-bold px-3">
+          📥 匯出稽核報表
+        </button>
+      </div>
+
+      <div className="border rounded-3 overflow-hidden">
+        <table className="table table-hover align-middle mb-0">
+          <thead className="table-light">
+            <tr className="small text-muted text-uppercase fw-bold">
+              <th className="ps-4 py-3">發生時間 (MS)</th>
+              <th>執行者 (Account)</th>
+              <th>角色</th>
+              <th>專案 / Runcard</th>
+              <th>測試站點 & 步驟</th>
+              <th>動作</th>
+              <th>機台 ID</th>
+              <th>狀態</th>
+            </tr>
+          </thead>
+          <tbody style={{ fontSize: '13.5px' }}>
+            {/* --- 註解：此處為未來串接 API map 顯示資料 --- */}
+            {/* 業界標準：每行日誌應顯示「操作者」與「動作」，點擊後可跳轉至該專案詳情 */}
+            
+            {/* 模擬一筆成功紀錄 */}
+            <tr>
+              <td className="ps-4 text-muted">2026-01-15 11:30:01.45</td>
+              <td><span className="fw-bold">tech_john</span></td>
+              <td><span className="badge bg-success bg-opacity-10 text-success px-2 py-1">Technician</span></td>
+              <td><span className="text-primary fw-medium">PJT-MAX-001</span></td>
+              <td>Step 2: Stress Test</td>
+              <td><span className="badge bg-primary px-2 py-1">CHECK-OUT</span></td>
+              <td><code>EQ-CH-05</code></td>
+              <td><span className="text-success fw-bold">● PASS</span></td>
+            </tr>
+
+            {/* 空數據預設狀態 */}
+            <tr>
+              <td colSpan="8" className="text-center py-5">
+                <div className="text-muted mb-2">正在等待實時數據接入...</div>
+                <div className="text-xs text-secondary opacity-50 italic">系統將根據登入帳號自動紀錄每一次點擊與參數修改</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* =====================================================
+   分頁二：帳號權限 (依帳號設定角色與開關)
+   ===================================================== */
+function AccountAccessSection() {
+  return (
+    <div className="animate-fade-in">
+      <div className="row g-4">
+        {/* 左側：帳號列表 */}
+        <div className="col-md-4">
+          <div className="border rounded-3 h-100 overflow-hidden bg-light bg-opacity-25">
+            <div className="p-3 bg-white border-bottom d-flex justify-content-between align-items-center">
+              <span className="fw-bold small">全體人員清單</span>
+              <button className="btn btn-xs btn-outline-primary py-0">新增帳號</button>
+            </div>
+            <div className="list-group list-group-flush" style={{ maxHeight: '600px', overflowY: 'auto' }}>
+              {/* --- 註解：未來連接 API 獲取人員數據 --- */}
+              <div className="list-group-item list-group-item-action p-3 border-start border-primary border-4 bg-primary bg-opacity-10">
+                <div className="d-flex justify-content-between align-items-start">
+                  <div>
+                    <div className="fw-bold">eng_wang (王大明)</div>
+                    <small className="text-muted">Lead Engineer</small>
+                  </div>
+                  <span className="badge bg-primary text-xs">Active</span>
+                </div>
+              </div>
+              
+              {/* 其他帳號示意 */}
+              <div className="list-group-item list-group-item-action p-3 opacity-75">
+                <div className="fw-bold">tech_lee (李小華)</div>
+                <small className="text-muted">Technician</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 右側：針對特定帳號的權限面板 */}
+        <div className="col-md-8">
+          <div className="card border-gray border-1 rounded-3 h-100 shadow-sm">
+            <div className="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+              <div>
+                <span className="text-muted small">帳號設定模式</span>
+                <h5 className="fw-bold mb-0 text-primary">eng_wang</h5>
+              </div>
+              <div className="form-check form-switch">
+                <input className="form-check-input" type="checkbox" checked readOnly />
+                <label className="form-check-label small fw-bold">帳號啟用</label>
+              </div>
+            </div>
+
+            <div className="card-body">
+              <div className="row mb-4 g-3 border-bottom pb-4">
+                <div className="col-md-6">
+                  <label className="form-label small fw-bold text-secondary">系統角色 (Role Assignment)</label>
+                  <select className="form-select border-gray">
+                    <option>Admin (管理員)</option>
+                    <option selected>Engineer (工程師)</option>
+                    <option>Technician (技術員)</option>
+                  </select>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label small fw-bold text-secondary">Runcard 負責權限</label>
+                  <select className="form-select border-gray">
+                    <option>僅限個人負責的 Runcard</option>
+                    <option selected>可操作組員的 Runcard (代理)</option>
+                    <option>所有 Runcard 讀寫權限</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 權限模組分組 */}
+              <h6 className="fw-bold mb-3 d-flex align-items-center">
+                <span className="me-2 text-primary">●</span> 功能存取明細 (Module Access)
+              </h6>
+              
+              <div className="row g-2">
+                {[
+                   { name: "專案創建 / 編輯 (Create Project)", group: "Admin/Eng" },
+                   { name: "測試規格設定 (Test Plan Setup)", group: "Admin/Eng" },
+                   { name: "標準報工 (Check In/Out)", group: "All" },
+                   { name: "數據無效化 (Mark Invalid)", group: "Admin Only", danger: true },
+                   { name: "系統配置管理 (Config Admin)", group: "Admin Only", danger: true },
+                   { name: "稽核報表匯出 (Export Logs)", group: "All" }
+                ].map((item, idx) => (
+                  <div key={idx} className="col-md-6">
+                    <div className={`p-3 border rounded-3 d-flex justify-content-between align-items-center ${item.danger ? 'border-danger-subtle bg-danger-subtle bg-opacity-10' : 'bg-light bg-opacity-50'}`}>
+                      <div>
+                        <div className={`text-sm fw-bold ${item.danger ? 'text-danger' : ''}`}>{item.name}</div>
+                        <small className="text-muted" style={{fontSize: '10px'}}>授權範圍: {item.group}</small>
+                      </div>
+                      <div className="form-check form-switch">
+                        <input className="form-check-input" type="checkbox" defaultChecked={!item.danger} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="alert alert-warning mt-4 py-2 border-0 small text-dark d-flex align-items-center gap-2">
+                <span>⚠️</span> 修改此帳號權限後，該人員下一次操作時將立即生效並產生變更日誌。
+              </div>
+
+              <div className="mt-4 pt-3 border-top text-end">
+                <button className="btn btn-primary px-5 fw-bold shadow-sm rounded-pill">儲存 eng_wang 的權限設定</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
