@@ -1,1099 +1,342 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { AgGridReact } from "ag-grid-react";
-import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
 
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-/**
- * ViewSearchPage (Master View)
- * - List view (AG Grid) with KPI + filters (KEEP your original style vibe)
- * - Details sidebar removed
- * - Progress column REMOVED (per latest requirement)
- * - Edit opens a large modal: ONE-PAGE master traveler (Create fields + Check In/Out steps)
- * - Save writes back to localStorage "all_projects" so Check In/Out sees the same updated data
- * - Qty In / Qty Out / Hardware are NOT shown in the master form (per requirement)
- * - Master form header fields: follow LIST column order as the ONLY 기준 (except Status not shown inside form)
- */
-export default function ViewSearchPage({ userRole, handleEdit, handleDelete }) {
-  const [allProjects, setAllProjects] = useState([]);
-  const [searchText, setSearchText] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [ownerFilter, setOwnerFilter] = useState("all");
-  const [productFilter, setProductFilter] = useState("all");
+export default function RunCardListPage() {
+  const [allData, setAllData] = useState([]);
+  
+  // --- 篩選狀態 ---
+  const [searchText, setSearchText] = useState(""); // 全域搜尋
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+  
+  // Excel 風格勾選篩選
+  const [colFilters, setColFilters] = useState({});
+  const [colMenuSearch, setColMenuSearch] = useState({}); 
 
-  // ---- Master Edit Modal ----
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editingMeta, setEditingMeta] = useState(null); // { projectId, lotId }
-  const [editDraft, setEditDraft] = useState(null); // full project object (deep clone)
-  const [editLotId, setEditLotId] = useState("");
-  const [editError, setEditError] = useState("");
+  // --- 分頁狀態 ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
-  const loadAll = useCallback(() => {
-    const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
-    setAllProjects(Array.isArray(data) ? data : []);
-  }, []);
+  // --- 欄位顯示控制 (依要求順序) ---
+  const columnConfig = [
+    { key: "status", label: "Status" },
+    { key: "createdDate", label: "CREATEDDATE" },
+    { key: "family", label: "Product Family" },
+    { key: "product", label: "Product" },
+    { key: "pid", label: "Product ID" },
+    { key: "ver", label: "VERSION" },
+    { key: "qrSize", label: "QR SAMPLE SIZE" },
+    { key: "owner", label: "OWNER" },
+    { key: "remark", label: "REMARK" },
+    { key: "stress", label: "Stress" },
+    { key: "lotId", label: "LotID" },
+    { key: "type", label: "Type" },
+    { key: "op", label: "Operation" },
+    { key: "cond", label: "Condition" },
+    { key: "progName", label: "Program Name" },
+    { key: "testProg", label: "Test Program" },
+    { key: "testScript", label: "Test Script" },
+    { key: "checkIn", label: "Check_in_Time" },
+    { key: "checkOut", label: "Check_Out_Time" },
+    { key: "qty", label: "Unit/Q'ty" },
+    { key: "hardware", label: "Hardware" },
+    { key: "note", label: "Note" }
+  ];
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  const [visibleCols, setVisibleCols] = useState(
+    columnConfig.reduce((acc, col) => ({ ...acc, [col.key]: true }), {})
+  );
 
-  // ---------- Helpers ----------
-  const formatNow = () => {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    return (
-      d.getFullYear() +
-      "-" +
-      pad(d.getMonth() + 1) +
-      "-" +
-      pad(d.getDate()) +
-      " " +
-      pad(d.getHours()) +
-      ":" +
-      pad(d.getMinutes()) +
-      ":" +
-      pad(d.getSeconds())
-    );
-  };
+  const loadData = useCallback(() => {
+    const raw = JSON.parse(localStorage.getItem("all_projects") || "[]");
+    const flattened = [];
 
-  const computeLotStatus = (lot) => {
-    const allRows = (lot?.stresses || []).flatMap((s) => s?.rowData || []);
-    const isAllDone =
-      allRows.length > 0 && allRows.every((r) => r.endTime && r.endTime !== "");
-    const isAnyStarted = allRows.some((r) => r.startTime && r.startTime !== "");
+    raw.forEach(proj => {
+      const header = proj.header || {};
+      const projCreatedDate = header["Created Date"] || proj.createdAt || "";
 
-    let lotStatus = "Init";
-    if (isAllDone && allRows.length > 0) lotStatus = "completed";
-    else if (isAnyStarted) lotStatus = "in-process";
-    return { lotStatus, allRows };
-  };
+      (proj.lots || []).forEach(lot => {
+        (lot.stresses || []).forEach(stressObj => {
+          (stressObj.rowData || []).forEach(row => {
+            let stepStatus = "Init";
+            if (row.endTime) stepStatus = "Completed";
+            else if (row.startTime) stepStatus = "In-Process";
 
-  const openMasterEdit = (projectId, lotId) => {
-    const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
-    const proj = (Array.isArray(data) ? data : []).find(
-      (p) => p?.header?.["Product ID"] === projectId
-    );
-    if (!proj) {
-      alert("Project not found in localStorage.");
-      return;
-    }
-
-    const clone = JSON.parse(JSON.stringify(proj));
-    const targetLot =
-      (clone.lots || []).find((l) => l?.lotId === lotId) ||
-      (clone.lots || [])[0] ||
-      null;
-
-    setEditingMeta({ projectId, lotId });
-    setEditDraft(clone);
-    setEditLotId(targetLot?.lotId || "");
-    setEditError("");
-    setIsEditOpen(true);
-  };
-
-  const closeMasterEdit = () => {
-    setIsEditOpen(false);
-    setEditingMeta(null);
-    setEditDraft(null);
-    setEditLotId("");
-    setEditError("");
-  };
-
-  const saveMasterEdit = () => {
-    if (!editDraft || !editingMeta) return;
-
-    // Required: update Status_Update_Time
-    const now = formatNow();
-    if (!editDraft.header) editDraft.header = {};
-    editDraft.header["Status_Update_Time"] = now;
-
-    // Write back to localStorage by matching original projectId (Product ID)
-    const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
-    const arr = Array.isArray(data) ? data : [];
-    const idx = arr.findIndex(
-      (p) => p?.header?.["Product ID"] === editingMeta.projectId
-    );
-
-    if (idx < 0) {
-      setEditError("Save failed: Project not found.");
-      return;
-    }
-
-    // If user changed Product ID in header, guard duplicate
-    const newId = editDraft?.header?.["Product ID"];
-    if (newId && newId !== editingMeta.projectId) {
-      const dup = arr.findIndex(
-        (p, i) => i !== idx && p?.header?.["Product ID"] === newId
-      );
-      if (dup >= 0) {
-        setEditError(`Save failed: Duplicate Product ID "${newId}" already exists.`);
-        return;
-      }
-    }
-
-    arr[idx] = editDraft;
-    localStorage.setItem("all_projects", JSON.stringify(arr));
-    loadAll();
-
-    // Update editingMeta key if user changed Product ID
-    setEditingMeta((m) => {
-      if (!m) return m;
-      return { ...m, projectId: editDraft?.header?.["Product ID"] || m.projectId };
-    });
-
-    setEditError("");
-    closeMasterEdit();
-  };
-
-  const updateHeaderField = (key, value) => {
-    setEditDraft((prev) => {
-      if (!prev) return prev;
-      const next = { ...prev, header: { ...(prev.header || {}) } };
-      next.header[key] = value;
-      return next;
-    });
-  };
-
-  const updateRowField = (stressIdx, rowIdx, key, value) => {
-    setEditDraft((prev) => {
-      if (!prev) return prev;
-      const next = JSON.parse(JSON.stringify(prev));
-      const lot = (next.lots || []).find((l) => l?.lotId === editLotId);
-      if (!lot) return next;
-      const s = (lot.stresses || [])[stressIdx];
-      if (!s) return next;
-      if (!s.rowData) s.rowData = [];
-      const r = s.rowData[rowIdx];
-      if (!r) return next;
-      r[key] = value;
-      return next;
-    });
-  };
-
-  // ---------- Build list rows (AG Grid) ----------
-  const allRows = useMemo(() => {
-    const masterRows = [];
-    (allProjects || []).forEach((proj) => {
-      const createdDate =
-        (proj?.header &&
-          (proj.header["Created Date"] || proj.header["Created Date "])) ||
-        proj?.createdAt ||
-        "";
-      const projectId = proj?.header?.["Product ID"] || "";
-      const product = proj?.header?.["Product"] || "";
-      const owner = proj?.header?.["Owner"] || "";
-      const statusUpdateTime = proj?.header?.["Status_Update_Time"] || "";
-
-      (proj?.lots || []).forEach((lot) => {
-        const { lotStatus, allRows: steps } = computeLotStatus(lot);
-        masterRows.push({
-          projectId,
-          product,
-          owner,
-          createdDate,
-          statusUpdateTime,
-          lotId: lot?.lotId || "",
-          status: lotStatus,
-          stresses: lot?.stresses || [],
-          totalSteps: steps.length,
-          completedSteps: steps.filter((r) => r?.endTime).length,
-          passRate:
-            steps.length > 0
-              ? Math.round((steps.filter((r) => r?.endTime).length / steps.length) * 100)
-              : 0,
+            flattened.push({
+              status: stepStatus,
+              createdDate: projCreatedDate.split(' ')[0],
+              family: header["Product Family"] || "",
+              product: header["Product"] || "",
+              pid: header["Product ID"] || "",
+              ver: header["VERSION"] || "",
+              qrSize: header["QR SAMPLE SIZE"] || "",
+              owner: header["Owner"] || "",
+              remark: header["REMARK"] || "",
+              stress: stressObj.stress || "",
+              lotId: lot.lotId || "",
+              type: row.type || "",
+              op: row.operation || "",
+              cond: row.condition || "",
+              progName: row.programName || "",
+              testProg: row.testProgram || "",
+              testScript: row.testScript || "",
+              checkIn: row.startTime || "",
+              checkOut: row.endTime || "",
+              qty: row.qty || "",
+              hardware: row.hardware || "",
+              note: row.note || ""
+            });
+          });
         });
       });
     });
-    return masterRows;
-  }, [allProjects]);
+    setAllData(flattened);
+  }, []);
 
-  const filteredData = useMemo(() => {
-    return (allRows || []).filter((item) => {
-      const pid = (item.projectId || "").toLowerCase();
-      const lot = (item.lotId || "").toLowerCase();
-      const prod = (item.product || "").toLowerCase();
-      const own = (item.owner || "").toLowerCase();
-      const q = (searchText || "").toLowerCase();
+  useEffect(() => { loadData(); }, [loadData]);
 
-      const matchesSearch = pid.includes(q) || lot.includes(q) || prod.includes(q) || own.includes(q);
+  const stats = useMemo(() => ({
+    total: allData.length,
+    active: allData.filter(x => x.status === "In-Process").length,
+    done: allData.filter(x => x.status === "Completed").length,
+    init: allData.filter(x => x.status === "Init").length
+  }), [allData]);
 
-      const matchesStatus = statusFilter === "all" || item.status === statusFilter;
-      const matchesOwner = ownerFilter === "all" || item.owner === ownerFilter;
-      const matchesProduct = productFilter === "all" || item.product === productFilter;
-
-      let matchesDate = true;
-      if (startDate || endDate) {
-        const itemDate = new Date(item.createdDate).getTime();
-        if (startDate) {
-          const start = new Date(startDate).getTime();
-          if (itemDate < start) matchesDate = false;
-        }
-        if (endDate) {
-          const end = new Date(endDate);
-          end.setHours(23, 59, 59, 999);
-          if (itemDate > end.getTime()) matchesDate = false;
-        }
-      }
-
-      return matchesSearch && matchesStatus && matchesOwner && matchesProduct && matchesDate;
+  const filteredRows = useMemo(() => {
+    return allData.filter(d => {
+      const s = searchText.toLowerCase();
+      const matchGlobal = s === "" || Object.values(d).some(v => String(v).toLowerCase().includes(s));
+      const matchDate = (!startDate || d.createdDate >= startDate) && (!endDate || d.createdDate <= endDate);
+      const matchCols = Object.keys(colFilters).every(key => {
+        if (!colFilters[key] || colFilters[key].length === 0) return true;
+        return colFilters[key].includes(String(d[key]));
+      });
+      return matchGlobal && matchDate && matchCols;
     });
-  }, [allRows, searchText, statusFilter, ownerFilter, productFilter, startDate, endDate]);
+  }, [allData, searchText, startDate, endDate, colFilters]);
 
-  const cardStatistics = useMemo(() => {
-    const total = (allRows || []).length;
-    const completed = (allRows || []).filter((p) => p.status === "completed").length;
-    const inProcess = (allRows || []).filter((p) => p.status === "in-process").length;
-    const init = (allRows || []).filter((p) => p.status === "Init").length;
-    return { total, completed, inProcess, init };
-  }, [allRows]);
+  const totalItems = filteredRows.length;
+  const totalPages = Math.ceil(totalItems / pageSize);
+  const currentTableData = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage, pageSize]);
 
-  const globalStatistics = useMemo(() => {
-    const totalSteps = (allRows || []).reduce((sum, p) => sum + (p.totalSteps || 0), 0);
-    const completedSteps = (allRows || []).reduce((sum, p) => sum + (p.completedSteps || 0), 0);
-    const passRate = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-    return { passRate, totalSteps, completedSteps };
-  }, [allRows]);
+  const getUniqueValues = (key) => {
+    const vals = [...new Set(allData.map(item => String(item[key] || "")))].sort();
+    return vals;
+  };
 
-  const owners = useMemo(() => {
-    const unique = [...new Set((allRows || []).map((p) => p.owner).filter(Boolean))];
-    return unique.sort();
-  }, [allRows]);
-
-  const products = useMemo(() => {
-    const unique = [...new Set((allRows || []).map((p) => p.product).filter(Boolean))];
-    return unique.sort();
-  }, [allRows]);
-
-  const handleResetFilters = () => {
+  const handleReset = () => {
     setSearchText("");
-    setStatusFilter("all");
-    setOwnerFilter("all");
-    setProductFilter("all");
     setStartDate("");
     setEndDate("");
+    setColFilters({});
+    setCurrentPage(1);
   };
 
-  const statusCell = (p) => {
-    const colors = {
-      completed: { bg: "#d1fae5", text: "#065f46", label: "✓ COMPLETED" },
-      "in-process": { bg: "#ffedd5", text: "#9a3412", label: "⟳ IN-PROCESS" },
-      Init: { bg: "#f1f5f9", text: "#64748b", label: "○ INIT" },
-    };
-    const config = colors[p.value] || colors.Init;
-    return (
-      <span
-        style={{
-          backgroundColor: config.bg,
-          color: config.text,
-          padding: "4px 10px",
-          borderRadius: "4px",
-          fontSize: "11px",
-          fontWeight: "bold",
-        }}
-      >
-        {config.label}
-      </span>
-    );
+  const toggleColFilter = (key, val) => {
+    setColFilters(prev => {
+      const current = prev[key] || [];
+      const next = current.includes(val) ? current.filter(v => v !== val) : [...current, val];
+      return { ...prev, [key]: next };
+    });
+    setCurrentPage(1);
   };
-
-  // ✅ Column order 기준: Status, Product ID, Lot ID, Product, Owner, Created Date, Status_Update_Time, Manage
-  // ✅ Progress removed
-  const columnDefs = useMemo(() => {
-    const cols = [
-      { headerName: "Status", field: "status", width: 120, cellRenderer: statusCell },
-      { headerName: "Product ID", field: "projectId", width: 140 },
-      { headerName: "Lot ID", field: "lotId", width: 140 },
-      { headerName: "Product", field: "product", width: 140 },
-      { headerName: "Owner", field: "owner", width: 120 },
-      { headerName: "Created Date", field: "createdDate", width: 160 },
-      { headerName: "Status_Update_Time", field: "statusUpdateTime", width: 180 },
-    ];
-
-    cols.push({
-      headerName: "Manage",
-      width: 170,
-      cellRenderer: (params) => (
-        <div style={{ display: "flex", gap: "6px" }}>
-          <button
-            className="btn-edit"
-            onClick={(e) => {
-              e.stopPropagation();
-              try {
-                if (typeof handleEdit === "function") handleEdit(params.data.projectId);
-              } catch (err) {}
-              openMasterEdit(params.data.projectId, params.data.lotId);
-            }}
-            title="Edit (Master Traveler)"
-          >
-            ✏️ Edit
-          </button>
-          <button
-            className="btn-delete"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (window.confirm(`Are you sure you want to delete this item?`)) {
-                try {
-                  if (typeof handleDelete === "function") handleDelete(params.data.projectId);
-                } catch (err) {}
-                const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
-                const updatedData = (Array.isArray(data) ? data : []).filter(
-                  (proj) => proj?.header?.["Product ID"] !== params.data.projectId
-                );
-                localStorage.setItem("all_projects", JSON.stringify(updatedData));
-                loadAll();
-              }
-            }}
-            title="Delete project"
-          >
-            🗑️ Delete
-          </button>
-        </div>
-      ),
-    });
-
-    return cols;
-  }, [handleEdit, handleDelete, loadAll]);
-
-  // ---------- Master form view model ----------
-  // ✅ Form order 기준: follow LIST order (except Status). Then add the remaining create header fields (kept compact).
-  const masterHeaderKeys = useMemo(() => {
-    return [
-      // list order (except Status)
-      "Product ID",
-      "Lot ID",
-      "Product",
-      "Owner",
-      "Created Date",
-      "Status_Update_Time",
-      // remaining create fields (keep)
-      "Project Family",
-      "Version",
-      "QR",
-      "Remark",
-    ];
-  }, []);
-
-  const currentLot = useMemo(() => {
-    if (!editDraft) return null;
-    return (editDraft.lots || []).find((l) => l?.lotId === editLotId) || null;
-  }, [editDraft, editLotId]);
-
-  const stepFlat = useMemo(() => {
-    if (!currentLot) return [];
-    const out = [];
-    (currentLot.stresses || []).forEach((s, stressIdx) => {
-      const stressName = s?.stress || "";
-      (s?.rowData || []).forEach((row, rowIdx) => {
-        out.push({
-          stressIdx,
-          rowIdx,
-          stress: stressName,
-          operation: row?.operation || "",
-          condition: row?.condition || "",
-          startTime: row?.startTime || "",
-          endTime: row?.endTime || "",
-          remark: row?.remark || row?.Remark || "",
-        });
-      });
-    });
-    return out;
-  }, [currentLot]);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "calc(100vh - 60px)",
-        background: "#f0f4f8",
-        overflow: "hidden",
-        flexDirection: "column",
-      }}
-    >
-      {/* ============ 頂部統計摘要區 (keep original vibe) ============ */}
-      <div
-        style={{
-          background: "white",
-          padding: "10px 20px",
-          borderBottom: "1px solid #e2e8f0",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-            gap: "8px",
-            marginBottom: "0px",
-          }}
-        >
-          <div
-            className="kpi-card"
-            onClick={() => setStatusFilter("all")}
-            style={{
-              cursor: "pointer",
-              opacity: statusFilter === "all" ? 1 : 0.6,
-              borderColor: statusFilter === "all" ? "#3b82f6" : "#e2e8f0",
-              borderWidth: statusFilter === "all" ? "2px" : "1px",
-            }}
-          >
-            <div className="kpi-label">Total Tests</div>
-            <div className="kpi-value">{cardStatistics.total}</div>
-          </div>
-
-          <div
-            className="kpi-card"
-            onClick={() => setStatusFilter("completed")}
-            style={{
-              cursor: "pointer",
-              opacity: statusFilter === "completed" ? 1 : 0.6,
-              borderColor: statusFilter === "completed" ? "#10b981" : "#e2e8f0",
-              borderWidth: statusFilter === "completed" ? "2px" : "1px",
-            }}
-          >
-            <div className="kpi-label">Completed</div>
-            <div className="kpi-value" style={{ color: "#10b981" }}>
-              {cardStatistics.completed}
-            </div>
-          </div>
-
-          <div
-            className="kpi-card"
-            onClick={() => setStatusFilter("in-process")}
-            style={{
-              cursor: "pointer",
-              opacity: statusFilter === "in-process" ? 1 : 0.6,
-              borderColor: statusFilter === "in-process" ? "#f59e0b" : "#e2e8f0",
-              borderWidth: statusFilter === "in-process" ? "2px" : "1px",
-            }}
-          >
-            <div className="kpi-label">In-Process</div>
-            <div className="kpi-value" style={{ color: "#f59e0b" }}>
-              {cardStatistics.inProcess}
-            </div>
-          </div>
-
-          <div
-            className="kpi-card"
-            onClick={() => setStatusFilter("Init")}
-            style={{
-              cursor: "pointer",
-              opacity: statusFilter === "Init" ? 1 : 0.6,
-              borderColor: statusFilter === "Init" ? "#64748b" : "#e2e8f0",
-              borderWidth: statusFilter === "Init" ? "2px" : "1px",
-            }}
-          >
-            <div className="kpi-label">Init</div>
-            <div className="kpi-value" style={{ color: "#94a3b8" }}>
-              {cardStatistics.init}
-            </div>
-          </div>
-
-          <div className="kpi-card" style={{ cursor: "default" }}>
-            <div className="kpi-label">Pass Rate</div>
-            <div className="kpi-value" style={{ color: "#3b82f6" }}>
-              {globalStatistics.passRate}%
-            </div>
-          </div>
-
-          <div className="kpi-card" style={{ cursor: "default" }}>
-            <div className="kpi-label">Total Steps</div>
-            <div className="kpi-value">
-              {globalStatistics.completedSteps}/{globalStatistics.totalSteps}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ============ 搜索與篩選區域 ============ */}
-      <div style={{ background: "white", padding: "10px 20px", borderBottom: "1px solid #e2e8f0" }}>
-        <div style={{ display: "flex", gap: "10px", alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div style={{ flex: "1", minWidth: "240px" }}>
-            <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-              🔍 Search (ID / Lot / Product / Owner)
-            </label>
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "6px",
-                fontSize: "13px",
-                boxSizing: "border-box",
-                transition: "border-color 0.2s",
-              }}
-              onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
-              onBlur={(e) => (e.target.style.borderColor = "#cbd5e1")}
-            />
-          </div>
-
-          <button
-            className="filter-toggle-btn"
-            onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-            style={{
-              background: showAdvancedFilter ? "#3b82f6" : "#f1f5f9",
-              color: showAdvancedFilter ? "white" : "#475569",
-            }}
-          >
-            ⚙️ Advanced
-          </button>
-
-          <button className="reset-btn" onClick={handleResetFilters} title="Reset all filters">
-            ⟲ Reset
-          </button>
-        </div>
-
-        {showAdvancedFilter && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-              gap: "10px",
-              marginTop: "8px",
-              paddingTop: "8px",
-              borderTop: "1px solid #e2e8f0",
-            }}
-          >
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                Start Date
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                End Date
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                Owner
-              </label>
-              <select
-                value={ownerFilter}
-                onChange={(e) => setOwnerFilter(e.target.value)}
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
-              >
-                <option value="all">All Owners</option>
-                {owners.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                Product
-              </label>
-              <select
-                value={productFilter}
-                onChange={(e) => setProductFilter(e.target.value)}
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
-              >
-                <option value="all">All Products</option>
-                {products.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ============ 主要表格區域 ============ */}
-      <div style={{ flex: 1, display: "flex", minWidth: 0, overflow: "hidden" }}>
-        <div style={{ flex: 1, padding: "16px 20px", display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
-          <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px", fontWeight: 500 }}>
-            📊 Showing {filteredData.length} of {allRows.length} tests
-          </div>
-          <div className="ag-theme-alpine compact-grid" style={{ flex: 1, width: "100%" }}>
-            <AgGridReact
-              rowData={filteredData}
-              columnDefs={columnDefs}
-              defaultColDef={{ sortable: true, resizable: true, filter: false, flex: 1 }}
-              pagination={true}
-              paginationPageSize={40}
-              rowHeight={44}
-              headerHeight={40}
-              rowClass="grid-row"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ============ Master Edit Modal (ONE PAGE, no internal search) ============ */}
-      {isEditOpen && editDraft && (
-        <div
-          className="master-modal-overlay"
-          onMouseDown={(e) => {
-            if (e.target.classList.contains("master-modal-overlay")) closeMasterEdit();
-          }}
-        >
-          <div className="master-modal" role="dialog" aria-modal="true">
-            <div className="master-modal-header">
-              <div>
-                <div className="master-modal-subtitle">MASTER TRAVELER</div>
-                <div className="master-modal-title">
-                  Product ID: <strong>{editDraft?.header?.["Product ID"] || "-"}</strong> &nbsp; | &nbsp; Lot: <strong>{editLotId || "-"}</strong>
-                </div>
+    <div className="container-fluid py-2 bg-light min-vh-100">
+      
+      {/* 1. 最上方圖表字卡 (統計數字) */}
+      <div className="row g-2 mb-2">
+        {[
+          { label: "Total", val: stats.total, color: "primary" },
+          { label: "Completed", val: stats.done, color: "success" },
+          { label: "In-Process", val: stats.active, color: "warning" },
+          { label: "Init", val: stats.init, color: "secondary"}
+        ].map((item, i) => (
+          <div key={i} className="col-3">
+            <div className={`card shadow-sm border-0 border-start border-3 border-${item.color}`}>
+              <div className="card-body py-1 px-3">
+                <div className="text-muted small fw-bold" style={{fontSize:'10px'}}>{item.label}</div>
+                <div className="h6 mb-0 fw-bold">{item.val}</div>
               </div>
-              <button className="master-close-btn" onClick={closeMasterEdit} title="Close">
-                ×
-              </button>
             </div>
+          </div>
+        ))}
+      </div>
 
-            <div className="master-modal-body">
-              {editError && <div className="master-error">{editError}</div>}
-
-              {/* ONE PAGE: Header fields (compact, order follows LIST columns first) */}
-              <div className="master-section">
-                <div className="master-section-title">Project Information</div>
-
-                <div className="master-form-grid">
-                  {masterHeaderKeys.map((k) => {
-                    // Lot ID is from lot, not header
-                    const isLotId = k === "Lot ID";
-                    const isReadonly = k === "Status_Update_Time" || isLotId;
-
-                    const val = isLotId ? (editLotId || "") : ((editDraft?.header || {})[k] || "");
-
-                    const label = k === "Status_Update_Time" ? "Status_Update_Time (Auto)" : k;
-
-                    // Created Date might be blank in header; allow edit to keep sync (your data sometimes in proj.createdAt)
-                    // We keep editable unless you later want lock.
-                    return (
-                      <div key={k} className="master-field">
-                        <label className="master-label">{label}</label>
-
-                        {k === "Remark" ? (
-                          <textarea
-                            className={`master-input master-textarea ${isReadonly ? "readonly" : ""}`}
-                            value={val}
-                            disabled={isReadonly}
-                            onChange={(e) => updateHeaderField(k, e.target.value)}
-                          />
-                        ) : (
-                          <input
-                            className={`master-input ${isReadonly ? "readonly" : ""}`}
-                            value={val}
-                            disabled={isReadonly}
-                            onChange={(e) => {
-                              if (isLotId) return;
-                              updateHeaderField(k, e.target.value);
-                            }}
-                          />
-                        )}
+      {/* 2. 控制列：搜尋與日期 */}
+      <div className="card shadow-sm border-0 mb-2">
+        <div className="card-body p-2">
+          <div className="row g-2 align-items-center">
+            <div className="col-md-4">
+              <input 
+                type="text" className="form-control form-control-sm" 
+                placeholder="🔍 Search all fields..." 
+                value={searchText} onChange={e => {setSearchText(e.target.value); setCurrentPage(1);}} 
+              />
+            </div>
+            <div className="col-md-5 d-flex align-items-center gap-1">
+              <span className="small text-muted text-nowrap">CREATEDDATE:</span>
+              <input type="date" className="form-control form-control-sm" value={startDate} onChange={e => setStartDate(e.target.value)} />
+              <span className="text-muted">~</span>
+              <input type="date" className="form-control form-control-sm" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+            <div className="col-md-3 text-end">
+              <div className="dropdown d-inline-block me-2">
+                <button className="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">⚙️ Columns</button>
+                <ul className="dropdown-menu dropdown-menu-end shadow p-2" style={{ maxHeight: '400px', overflowY: 'auto', zIndex: 1100 }}>
+                  {columnConfig.map(col => (
+                    <li key={col.key} className="dropdown-item py-1">
+                      <div className="form-check">
+                        <input className="form-check-input" type="checkbox" checked={visibleCols[col.key]} onChange={() => setVisibleCols(prev => ({ ...prev, [col.key]: !prev[col.key] }))} id={'vis'+col.key} />
+                        <label className="form-check-label w-100 small" htmlFor={'vis'+col.key}>{col.label}</label>
                       </div>
-                    );
-                  })}
-                </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
-
-              {/* Steps / Operation Records (no Qty/Hardware) */}
-              <div className="master-section" style={{ marginTop: 12 }}>
-                <div className="master-section-title">Operation Records (Check In / Out)</div>
-
-                {!currentLot ? (
-                  <div className="master-empty">No lot data found.</div>
-                ) : stepFlat.length === 0 ? (
-                  <div className="master-empty">No steps recorded.</div>
-                ) : (
-                  <div className="master-steps-wrap">
-                    <table className="master-steps-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: 120 }}>Lot</th>
-                          <th style={{ width: 140 }}>Stress</th>
-                          <th>Operation</th>
-                          <th>Condition</th>
-                          <th style={{ width: 160 }}>Check In</th>
-                          <th style={{ width: 160 }}>Check Out</th>
-                          <th style={{ width: 220 }}>Remark</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stepFlat.map((r, idx) => (
-                          <tr key={idx}>
-                            <td className="readonly-cell">{editLotId}</td>
-                            <td className="readonly-cell">{r.stress}</td>
-                            <td>
-                              <input className="cell-input" value={r.operation} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "operation", e.target.value)} />
-                            </td>
-                            <td>
-                              <input className="cell-input" value={r.condition} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "condition", e.target.value)} />
-                            </td>
-                            <td>
-                              <input className="cell-input" value={r.startTime} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "startTime", e.target.value)} />
-                            </td>
-                            <td>
-                              <input className="cell-input" value={r.endTime} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "endTime", e.target.value)} />
-                            </td>
-                            <td>
-                              <input className="cell-input" value={r.remark} onChange={(e) => updateRowField(r.stressIdx, r.rowIdx, "remark", e.target.value)} />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    <div className="master-note">
-                      • This page edits the same data used by Check In / Out (localStorage: <code>all_projects</code>).
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="master-modal-footer">
-              <div className="footer-left">
-                <div className="footer-hint">Status_Update_Time will be updated automatically on save.</div>
-              </div>
-              <div className="footer-right">
-                <button className="btn-secondary" onClick={closeMasterEdit}>
-                  Cancel
-                </button>
-                <button className="btn-primary" onClick={saveMasterEdit}>
-                  Save & Update
-                </button>
-              </div>
+              <button className="btn btn-sm btn-outline-danger" onClick={handleReset}>Reset</button>
             </div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* 3. 分頁 */}
+      <div className="d-flex justify-content-between align-items-center mb-2 px-1">
+        <div className="small text-muted">Showing <b>{currentTableData.length}</b> records</div>
+        <div className="btn-group btn-group-sm">
+          <button className="btn btn-white border" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>Prev</button>
+          <button className="btn btn-primary px-3" disabled>{currentPage} / {totalPages || 1}</button>
+          <button className="btn btn-white border" disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(p => p + 1)}>Next</button>
+        </div>
+      </div>
+
+      {/* 4. 表格 (固定長度且選單同步滾動) */}
+      <div className="card shadow-sm border-0 main-table-container">
+        <div className="table-responsive custom-scrollbar">
+          <table className="table table-sm table-hover table-bordered mb-0 align-middle">
+            <thead className="table-dark sticky-top">
+              <tr className="text-nowrap" style={{ fontSize: '11px' }}>
+                <th className="text-center" style={{width:'40px'}}>#</th>
+                {columnConfig.map(col => {
+                  if (!visibleCols[col.key]) return null;
+                  const isFiltered = colFilters[col.key] && colFilters[col.key].length > 0;
+                  return (
+                    <th key={col.key} className="position-relative">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <span className={isFiltered ? "text-warning" : ""}>{col.label}</span>
+                        <div className="dropdown ms-1">
+                          <span className={`filter-icon ${isFiltered ? 'active' : ''}`} data-bs-toggle="dropdown" data-bs-auto-close="outside">▼</span>
+                          <div className="dropdown-menu shadow p-2 excel-dropdown">
+                            <input 
+                              type="text" className="form-control form-control-sm mb-2" 
+                              placeholder="Search..." 
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setColMenuSearch(prev => ({...prev, [col.key]: e.target.value}))}
+                            />
+                            <div className="list-container">
+                              {getUniqueValues(col.key)
+                                .filter(v => v.toLowerCase().includes((colMenuSearch[col.key] || "").toLowerCase()))
+                                .map(val => (
+                                <div className="form-check py-1" key={val}>
+                                  <input 
+                                    className="form-check-input" type="checkbox" 
+                                    checked={colFilters[col.key]?.includes(val) || false}
+                                    onChange={() => toggleColFilter(col.key, val)}
+                                    id={`filter-${col.key}-${val}`}
+                                  />
+                                  <label className="form-check-label small w-100" htmlFor={`filter-${col.key}-${val}`}>{val || "(Blanks)"}</label>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="dropdown-divider"></div>
+                            <button className="btn btn-link btn-sm p-0 text-danger" onClick={() => setColFilters(prev => ({...prev, [col.key]: []}))}>Clear All</button>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody style={{ fontSize: '11.5px' }}>
+              {currentTableData.map((r, i) => (
+                <tr key={i} className="text-nowrap">
+                  <td className="text-center text-muted bg-light">{(currentPage - 1) * pageSize + i + 1}</td>
+                  {visibleCols.status && <td className="text-center"><span className={`badge rounded-pill bg-${r.status==='Completed'?'success':(r.status==='In-Process'?'warning':'secondary')} text-dark`} style={{fontSize:'10px'}}>{r.status}</span></td>}
+                  {visibleCols.createdDate && <td>{r.createdDate}</td>}
+                  {visibleCols.family && <td>{r.family}</td>}
+                  {visibleCols.product && <td>{r.product}</td>}
+                  {visibleCols.pid && <td className="fw-bold text-primary">{r.pid}</td>}
+                  {visibleCols.ver && <td>{r.ver}</td>}
+                  {visibleCols.qrSize && <td>{r.qrSize}</td>}
+                  {visibleCols.owner && <td>{r.owner}</td>}
+                  {visibleCols.remark && <td className="small text-muted">{r.remark}</td>}
+                  {visibleCols.stress && <td>{r.stress}</td>}
+                  {visibleCols.lotId && <td className="fw-bold">{r.lotId}</td>}
+                  {visibleCols.type && <td>{r.type}</td>}
+                  {visibleCols.op && <td>{r.op}</td>}
+                  {visibleCols.cond && <td className="text-muted">{r.cond}</td>}
+                  {visibleCols.progName && <td>{r.progName}</td>}
+                  {visibleCols.testProg && <td>{r.testProg}</td>}
+                  {visibleCols.testScript && <td>{r.testScript}</td>}
+                  {visibleCols.checkIn && <td className="text-primary">{r.checkIn}</td>}
+                  {visibleCols.checkOut && <td className="text-success">{r.checkOut}</td>}
+                  {visibleCols.qty && <td>{r.qty}</td>}
+                  {visibleCols.hardware && <td>{r.hardware}</td>}
+                  {visibleCols.note && <td className="text-truncate" style={{ maxWidth: '120px' }} title={r.note}>{r.note}</td>}
+                </tr>
+              ))}
+              {/* 填充空白行以維持高度，確保表格長度固定 */}
+              {Array.from({ length: Math.max(0, 15 - currentTableData.length) }).map((_, idx) => (
+                <tr key={`empty-${idx}`} style={{ height: '33px' }}>
+                  <td colSpan="100" className="bg-light border-0"></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredRows.length === 0 && <div className="text-center p-5 text-muted">No records found.</div>}
+        </div>
+      </div>
 
       <style>{`
-        /* KPI 卡片 (restore your original style vibe) */
-        .kpi-card{
-          background: linear-gradient(135deg, #f8fafc 0%, #eef2f5 100%);
-          padding:10px 12px;
-          border-radius:8px;
-          border:1px solid #e2e8f0;
-          box-shadow:0 2px 4px rgba(0,0,0,0.02);
-          transition:all .3s;
+        .main-table-container { 
+          min-height: 70vh; 
+          background: #fff;
         }
-        .kpi-card:hover{
-          box-shadow:0 4px 12px rgba(0,0,0,0.08);
-          border-color:#cbd5e1;
-          transform:translateY(-2px);
+        .table-responsive { 
+          height: 70vh; 
+          overflow: visible !important; /* 關鍵：讓選單可以顯示出來 */
+          overflow-x: auto !important;
+          overflow-y: auto !important;
         }
-        .kpi-label{
-          font-size:11px;
-          color:#64748b;
-          font-weight:600;
-          margin-bottom:4px;
-          text-transform:uppercase;
-          letter-spacing:.5px
+        
+        /* 解決選單隨滾輪移動問題：改用 absolute 定位並確保父層有 position-relative */
+        .excel-dropdown { 
+          position: absolute !important; 
+          top: 100%;
+          right: 0;
+          min-width: 220px; 
+          z-index: 1050; 
+          margin-top: 5px;
+          display: none;
         }
-        .kpi-value{font-size:20px;font-weight:bold;color:#1e293b}
-
-        /* 篩選按鈕 */
-        .filter-toggle-btn, .reset-btn{
-          padding:8px 14px;
-          border:1px solid #cbd5e1;
-          border-radius:6px;
-          font-size:12px;
-          font-weight:600;
-          cursor:pointer;
-          transition:all .2s;
-          white-space:nowrap;
-        }
-        .filter-toggle-btn{border:none}
-        .reset-btn{
-          background:#94a3b8;
-          color:white;
-          border:none;
-        }
-        .filter-toggle-btn:hover, .reset-btn:hover{
-          transform:translateY(-2px);
-          box-shadow:0 4px 8px rgba(0,0,0,0.1);
+        .dropdown.show .excel-dropdown {
+          display: block;
         }
 
-        /* 表格格線優化 */
-        .compact-grid .ag-cell{
-          border-right:1px solid #e2e8f0!important;
-          display:flex;
-          align-items:center;
-        }
-        .compact-grid .ag-header-cell{
-          border-right:1px solid #cbd5e1!important;
-          background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%) !important;
-          font-weight:700;
-          color:#334155;
-        }
-        .compact-grid .ag-row{
-          border-bottom:1px solid #e2e8f0!important;
-          transition:background-color .2s;
-        }
-        .compact-grid .ag-row:hover{background-color:#f8fafc!important}
-        .grid-row:hover{background-color:#f0f4f8!important}
-
-        /* 管理按鈕 (keep your original colors) */
-        .btn-edit, .btn-delete{
-          padding:6px 10px;
-          border:none;
-          border-radius:5px;
-          font-size:11px;
-          font-weight:600;
-          cursor:pointer;
-          transition:all .2s;
-        }
-        .btn-edit{
-          background:#3b82f6;
-          color:white;
-        }
-        .btn-edit:hover{
-          background:#2563eb;
-          transform:translateY(-1px);
-        }
-        .btn-delete{
-          background:#ef4444;
-          color:white;
-        }
-        .btn-delete:hover{
-          background:#dc2626;
-          transform:translateY(-1px);
-        }
-
-        /* ===== MASTER MODAL (simple, not too colorful) ===== */
-        .master-modal-overlay{
-          position:fixed; inset:0;
-          background:rgba(15,23,42,0.55);
-          display:flex; align-items:center; justify-content:center;
-          padding:20px;
-          z-index:9999;
-        }
-        .master-modal{
-          width:min(1180px, 96vw);
-          height:min(86vh, 920px);
-          background:#fff;
-          border-radius:12px;
-          box-shadow:0 30px 80px rgba(0,0,0,0.35);
-          display:flex;
-          flex-direction:column;
-          overflow:hidden;
-        }
-        .master-modal-header{
-          padding:14px 16px;
-          border-bottom:1px solid #e5e7eb;
-          display:flex;
-          justify-content:space-between;
-          align-items:flex-start;
-          background:#fff;
-        }
-        .master-modal-subtitle{
-          font-size:11px;
-          font-weight:800;
-          color:#64748b;
-          letter-spacing:.6px;
-        }
-        .master-modal-title{
-          margin-top:4px;
-          font-size:14px;
-          font-weight:700;
-          color:#111827;
-        }
-        .master-close-btn{
-          width:34px;height:34px;
-          border-radius:10px;
-          border:1px solid #e5e7eb;
-          background:#fff;
-          color:#111827;
-          font-size:22px;
-          cursor:pointer;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          transition:.15s;
-        }
-        .master-close-btn:hover{
-          background:#f8fafc;
-          transform:translateY(-1px);
-        }
-        .master-modal-body{
-          padding:14px 16px;
-          overflow:auto;
-          background:#fff;
-        }
-        .master-error{
-          background:#fef2f2;
-          border:1px solid #fecaca;
-          color:#7f1d1d;
-          padding:10px 12px;
-          border-radius:10px;
-          font-size:12px;
-          font-weight:700;
-          margin-bottom:12px;
-        }
-        .master-section{
-          border:1px solid #e5e7eb;
-          border-radius:12px;
-          padding:12px;
-          background:#fff;
-        }
-        .master-section-title{
-          font-size:12px;
-          font-weight:800;
-          color:#111827;
-          margin-bottom:8px;
-          letter-spacing:.2px;
-        }
-
-        /* compact header grid */
-        .master-form-grid{
-          display:grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap:8px 10px;
-        }
-        @media (max-width: 1100px){
-          .master-form-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        }
-        @media (max-width: 860px){
-          .master-form-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
-        @media (max-width: 560px){
-          .master-form-grid{ grid-template-columns: 1fr; }
-        }
-        .master-field{
-          display:flex;
-          flex-direction:column;
-          gap:5px;
-          min-width:0;
-        }
-        .master-label{
-          font-size:11px;
-          font-weight:700;
-          color:#475569;
-          white-space:nowrap;
-          overflow:hidden;
-          text-overflow:ellipsis;
-        }
-        .master-input{
-          border:1px solid #cbd5e1;
-          border-radius:8px;
-          padding:7px 9px;
-          font-size:12px;
-          outline:none;
-        }
-        .master-input:focus{ border-color:#3b82f6; }
-        .master-textarea{ min-height:34px; resize:vertical; }
-        .master-input.readonly{
-          background:#f8fafc;
-          color:#475569;
-        }
-
-        .master-empty{
-          padding:12px;
-          font-size:12px;
-          color:#64748b;
-          font-weight:600;
-        }
-
-        .master-steps-wrap{ overflow:auto; }
-        .master-steps-table{
-          width:100%;
-          border-collapse:collapse;
-          font-size:12px;
-        }
-        .master-steps-table th{
-          text-align:left;
-          padding:9px 9px;
-          background:#f8fafc;
-          border-bottom:1px solid #e5e7eb;
-          color:#111827;
-          font-weight:800;
-          white-space:nowrap;
-        }
-        .master-steps-table td{
-          border-bottom:1px solid #f1f5f9;
-          padding:7px 9px;
-          vertical-align:middle;
-        }
-        .readonly-cell{
-          background:#fafafa;
-          color:#475569;
-          font-weight:700;
-          white-space:nowrap;
-        }
-        .cell-input{
-          width:100%;
-          border:1px solid transparent;
-          border-radius:8px;
-          padding:7px 8px;
-          font-size:12px;
-          background:#fff;
-          outline:none;
-        }
-        .cell-input:focus{
-          border-color:#3b82f6;
-          box-shadow:0 0 0 2px rgba(59,130,246,0.10);
-        }
-        .master-note{
-          margin-top:8px;
-          font-size:11px;
-          color:#64748b;
-          font-weight:600;
-        }
-        .master-note code{
-          background:#f1f5f9;
-          padding:2px 6px;
-          border-radius:8px;
-          color:#111827;
-        }
-
-        .master-modal-footer{
-          padding:10px 16px;
-          border-top:1px solid #e5e7eb;
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-          gap:10px;
-          background:#fff;
-        }
-        .footer-hint{ font-size:11px; color:#64748b; font-weight:700; }
-        .footer-right{ display:flex; gap:10px; }
-        .btn-secondary{
-          padding:8px 12px;
-          border-radius:10px;
-          border:1px solid #cbd5e1;
-          background:#fff;
-          font-size:12px;
-          font-weight:800;
-          cursor:pointer;
-        }
-        .btn-secondary:hover{ background:#f8fafc; transform:translateY(-1px); }
-        .btn-primary{
-          padding:8px 12px;
-          border-radius:10px;
-          border:1px solid #3b82f6;
-          background:#3b82f6;
-          color:#fff;
-          font-size:12px;
-          font-weight:800;
-          cursor:pointer;
-        }
-        .btn-primary:hover{ background:#2563eb; transform:translateY(-1px); }
+        .list-container { max-height: 250px; overflow-y: auto; overflow-x: hidden; }
+        .filter-icon { font-size: 9px; cursor: pointer; color: #888; padding: 2px 4px; border-radius: 3px; }
+        .filter-icon:hover { background: rgba(255,255,255,0.2); }
+        .filter-icon.active { color: #ffc107; font-weight: bold; }
+        
+        .table-dark th { border-bottom: none !important; position: sticky; top: 0; z-index: 10; }
+        .sticky-top { top: 0; z-index: 100; }
+        .btn-white { background: white; }
+        
+        /* 確保表格容器在資料少時仍維持高度 */
+        .table { min-width: 100%; }
       `}</style>
     </div>
   );

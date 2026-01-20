@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 // 引入 React Router 相關組件
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'bootstrap/dist/js/bootstrap.bundle.min'; // 這是下拉選單或彈窗必備的 JS
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-alpine.css";
 // 頁面組件導入
 import PermissionMaintenancePage from "./pages/admin/PermissionMaintenancePage";
 import ConfigurationMaintenancePage from "./pages/admin/ConfigurationMaintenancePage";

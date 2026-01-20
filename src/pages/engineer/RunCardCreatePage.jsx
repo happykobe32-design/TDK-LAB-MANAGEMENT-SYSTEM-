@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import ReactDOM from "react-dom";
 import { AgGridReact } from "ag-grid-react";
 import { ModuleRegistry } from "ag-grid-community";
 import { AllCommunityModule } from "ag-grid-community";
@@ -10,30 +11,146 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 const API_BASE = "http://localhost:5001";
 
+// --- REMARK 彈窗編輯組件 ---
+const RemarkModal = ({ isOpen, value, onSave, onClose }) => {
+  const [tempValue, setTempValue] = useState(value);
+
+  useEffect(() => {
+    if (isOpen) setTempValue(value);
+  }, [isOpen, value]);
+
+  if (!isOpen) return null;
+
+  return ReactDOM.createPortal(
+    <div style={{
+      position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+      backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 10001
+    }}>
+      <div style={{
+        background: "#fff", padding: "20px", borderRadius: "8px", width: "500px", boxShadow: "0 4px 15px rgba(0,0,0,0.3)"
+      }}>
+        <h4 style={{ marginBottom: "15px", fontSize: "16px", fontWeight: "bold" }}>Edit Remark</h4>
+        <textarea
+          style={{ width: "100%", height: "200px", padding: "10px", borderRadius: "4px", border: "1px solid #ccc", fontSize: "14px", outline: "none", resize: "none", lineHeight: "1.5" }}
+          value={tempValue}
+          onChange={(e) => setTempValue(e.target.value)}
+          placeholder="Enter detailed remarks here..."
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "15px" }}>
+          <button onClick={onClose} style={{ padding: "6px 15px", border: "1px solid #ccc", background: "#eee", borderRadius: "4px", cursor: "pointer" }}>Cancel</button>
+          <button onClick={() => onSave(tempValue)} style={{ padding: "6px 15px", background: "#007bff", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}>Confirm</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+// --- 使用 React Portal 解決選單遮擋問題 ---
+const EditableDropdown = ({ value, options, onChange, placeholder, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const containerRef = useRef(null);
+
+  const toggleDropdown = () => {
+    if (disabled) return;
+    if (!isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: Math.max(rect.width, 160)
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target) && !e.target.closest(".portal-dropdown-panel")) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
+
+  return (
+    <div ref={containerRef} className="editable-dropdown-container" style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", position: "relative" }}>
+      <input
+        className="grid-cell-input"
+        style={{ flexGrow: 1, border: "none", background: "transparent", height: "100%", padding: "0 8px", fontSize: "12px", outline: "none", width: "calc(100% - 20px)" }}
+        value={value || ""}
+        placeholder={placeholder}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      
+      {!disabled && (
+        <div 
+          className="dropdown-trigger-btn" 
+          onClick={toggleDropdown}
+          style={{ width: "20px", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", borderLeft: "1px solid #eee", color: "#888", fontSize: "10px" }}
+        >
+          ▼
+        </div>
+      )}
+
+      {isOpen && ReactDOM.createPortal(
+        <div 
+          className="portal-dropdown-panel"
+          style={{ 
+            position: "absolute", 
+            top: coords.top, 
+            left: coords.left, 
+            width: coords.width,
+            background: "#fff", 
+            border: "1px solid #ccc", 
+            zIndex: 9999, 
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)", 
+            borderRadius: "2px",
+            maxHeight: "200px",
+            overflowY: "auto"
+          }}
+        >
+          {options.map((opt) => (
+            <div 
+              key={opt} 
+              className="dropdown-opt-item" 
+              onClick={() => { onChange(opt); setIsOpen(false); }}
+              style={{ padding: "6px 10px", cursor: "pointer", fontSize: "12px", borderBottom: "1px solid #f9f9f9" }}
+            >
+              {opt}
+            </div>
+          ))}
+          {options.length === 0 && <div style={{ padding: "8px", fontSize: "11px", color: "#999" }}>No option</div>}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
+
 export default function RunCardFormPage({ handleFinalSubmit }) {
-  // ===============================
   // 1. 狀態與初始值
   const initialHeader = {
-    "Product Family": "",
-    "Product": "",
-    "Product ID": "",
-    "Version": "",
-    "QR": "",
-    "Sample Size": "",
-    "Owner": "",
-    "Remark": "",
+    "Product Family": "", "Product": "", "Product ID": "", "Version": "",
+    "QR": "", "Sample Size": "", "Owner": "", "Remark": "",
   };
 
   const [header, setHeader] = useState(initialHeader);
   const [configMaster, setConfigMaster] = useState({ productFamilies: [], products: [] });
   const [stressMeta, setStressMeta] = useState({});
   const [templates, setTemplates] = useState([]); 
-  const [showTplList, setShowTplList] = useState(null); // 控制哪個 LOT 的選單打開
+  const [showTplList, setShowTplList] = useState(null);
+  const [isRemarkOpen, setIsRemarkOpen] = useState(false);
 
   const newRow = () => ({
     _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2),
     stress: "", type: "", operation: "", condition: "",
-     programName: "", testProgram: "", testScript: "", note: "",
+    programName: "", testProgram: "", testScript: "", note: "",
   });
 
   const createInitialLot = () => ({
@@ -45,9 +162,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   const [lots, setLots] = useState([createInitialLot()]);
   const [activeLotId, setActiveLotId] = useState(lots[0].id);
 
-  // ===============================
   // 2. 讀取資料
-  // ===============================
   useEffect(() => {
     fetch(`${API_BASE}/api/meta`)
       .then((r) => r.json())
@@ -72,7 +187,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     setTemplates(savedTemplates);
   }, []);
 
-  // ==================== 3. 操作邏輯 ===============================
+  // 3. 操作邏輯
   const addLot = () => { const newLot = createInitialLot(); setLots((p) => [...p, newLot]); setActiveLotId(newLot.id); };
   const deleteLot = (lotId) => { if (lots.length === 1) return alert("至少需保留一個 LOT"); const remain = lots.filter((l) => l.id !== lotId); setLots(remain); setActiveLotId(remain[0].id); };
   
@@ -100,16 +215,20 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     setLots((prev) => prev.map((l) => l.id === lotId ? { ...l, stresses: l.stresses.map((s) => s.id === stressId ? { ...s, rowData: newOrder } : s) } : l));
   };
 
-  // --- Template 相關邏輯 ---
   const saveAsTemplate = (lot) => {
     const name = window.prompt("Please enter the template name:"); if (!name) return;
     const newT = { name, stresses: lot.stresses.map(s => ({ rowData: s.rowData.map(({ _rid, ...p }) => p) })) };
     const updated = [...templates, newT]; setTemplates(updated); localStorage.setItem("runcard_templates", JSON.stringify(updated)); alert("✅ Template saved!");
   };
+
   const applyTemplate = (lotId, template) => {
-    setLots((prev) => prev.map((l) => l.id === lotId ? { ...l, stresses: template.stresses.map(s => ({ id: "str_" + Date.now() + "_" + Math.random().toString(16).slice(2), rowData: s.rowData.map(r => ({ ...r, _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2) })) })) } : l));
+    setLots((prev) => prev.map((l) => l.id === lotId ? { ...l, stresses: template.stresses.map(s => ({ 
+      id: "str_" + Date.now() + "_" + Math.random().toString(16).slice(2), 
+      rowData: s.rowData.map(r => ({ ...r, _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2) })) 
+    })) } : l));
     setShowTplList(null);
   };
+
   const deleteTemplateAction = (idx) => {
     if (window.confirm(`Are you sure you want to delete "${templates[idx].name}"?`)) {
         const updated = templates.filter((_, i) => i !== idx);
@@ -118,7 +237,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     }
   };
 
-  // 4. =================== 防呆儲存 ==============================
   const handleSave = () => {
     const requiredFields = ["Product Family", "Product", "Product ID", "Version", "QR", "Sample Size", "Owner"];
     for (let field of requiredFields) {
@@ -136,24 +254,45 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     setLots([resetLot]); setActiveLotId(resetLot.id);
   };
 
-  // 5. AG Grid Columns (加入 Hover 效果按鈕與拖曳圖示)
+  // 5. AG Grid Columns
   const columnDefs = useMemo(() => [
     { 
       headerName: "Stress", field: "stress", width: 140, rowDrag: true, 
       cellRenderer: (p) => (
-        <select className="grid-select" value={p.value || ""} onChange={(e) => updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { stress: e.target.value, type: "", operation: "", condition: "" })}>
-          <option value="">-- Stress --</option>
-          {Object.keys(stressMeta).map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <EditableDropdown 
+          value={p.value} 
+          options={Object.keys(stressMeta)} 
+          placeholder="-- Stress --"
+          onChange={(val) => updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { stress: val, type: "", operation: "", condition: "" })} 
+        />
       ),
     },
-    { headerName: "Type", field: "type", width: 120, cellRenderer: (p) => { const rows = stressMeta[p.data.stress] || []; const types = [...new Set(rows.map((r) => r.Type).filter(Boolean))]; return ( <select className="grid-select" value={p.value || ""} disabled={!p.data.stress} onChange={(e) => updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { type: e.target.value, operation: "", condition: "" })}> <option value="">-- Type --</option> {types.map((t) => <option key={t} value={t}>{t}</option>)} </select> ); }, },
-    { headerName: "Operation", field: "operation", width: 140, cellRenderer: (p) => { const rows = stressMeta[p.data.stress] || []; const ops = rows.filter((r) => r.Type === p.data.type).map((r) => r.Operation).filter(Boolean); return ( <select className="grid-select" value={p.value || ""} disabled={!p.data.type} onChange={(e) => { const match = rows.find((r) => r.Type === p.data.type && r.Operation === e.target.value); updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { operation: e.target.value, condition: match?.Condition || "" }); }}> <option value="">-- Operation --</option> {ops.map((o) => <option key={o} value={o}>{o}</option>)} </select> ); }, },
-    { headerName: "Condition", field: "condition", editable: true, width: 120 },
-    { headerName: "Program Name", field: "programName", editable: true, width: 130 },
-    { headerName: "Test Program", field: "testProgram", editable: true, width: 120 },
-    { headerName: "Test Script", field: "testScript", editable: true, width: 110 },
-    { headerName: "Note", field: "note", editable: true, width: 150 },
+    { 
+      headerName: "Type", field: "type", width: 120, 
+      cellRenderer: (p) => {
+        const types = [...new Set((stressMeta[p.data.stress] || []).map(r => r.Type).filter(Boolean))];
+        return <EditableDropdown value={p.value} options={types} placeholder="-- Type --" disabled={!p.data.stress} onChange={(val) => updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { type: val, operation: "", condition: "" })} />;
+      }
+    },
+    { 
+      headerName: "Operation", field: "operation", width: 140, 
+      cellRenderer: (p) => {
+        const rows = stressMeta[p.data.stress] || [];
+        const ops = rows.filter(r => r.Type === p.data.type).map(r => r.Operation).filter(Boolean);
+        return <EditableDropdown value={p.value} options={ops} placeholder="-- Operation --" disabled={!p.data.type} onChange={(val) => {
+          const match = rows.find(r => r.Type === p.data.type && r.Operation === val);
+          updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { operation: val, condition: match?.Condition || "" });
+        }} />;
+      }
+    },
+    { 
+        headerName: "Condition", field: "condition", editable: true, width: 120,
+        cellStyle: { fontSize: "12px", fontWeight: "normal" } 
+    },
+    { headerName: "Program Name", field: "programName", editable: true, width: 130, cellStyle: { fontSize: "12px", fontWeight: "normal" } },
+    { headerName: "Test Program", field: "testProgram", editable: true, width: 120, cellStyle: { fontSize: "12px", fontWeight: "normal" } },
+    { headerName: "Test Script", field: "testScript", editable: true, width: 110, cellStyle: { fontSize: "12px", fontWeight: "normal" } },
+    { headerName: "Note", field: "note", editable: true, width: 150, cellStyle: { fontSize: "12px", fontWeight: "normal" } },
     { headerName: "", width: 80, pinned: "right", cellRenderer: (p) => ( 
       <div className="d-flex gap-2 justify-content-center align-items-center h-100"> 
         <button className="grid-icon-btn copy-btn" title="Copy" onClick={() => duplicateRow(p.context.lotId, p.context.stressId, p.data)}>📋</button> 
@@ -164,7 +303,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
   return (
     <div className="form-page-container" style={{ padding: "0px", width: "100%" }}>
-      {/* 頂部資料區 */}
+      {/* 頂部 Header */}
       <div className="prof-card" style={{ padding: "8px 12px", marginBottom: "2px", borderRadius: "0", marginTop: "0", boxShadow: "none", border: "1px solid #e0e0e0" }}>
         <div className="header-grid" style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: "8px" }}>
           {Object.keys(header).map((k) => (
@@ -183,6 +322,24 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                   <option value="">-- Select --</option>
                   {configMaster.products.filter((p) => p.familyId === header["Product Family"]).map((p) => <option key={p.id} value={p.productName}>{p.productName}</option>)}
                 </select>
+              ) : k === "Remark" ? (
+                /* 優化 2: Remark 表面維持寬高，點擊開大彈窗 */
+                <div style={{ position: "relative" }}>
+                  <input 
+                    className="form-input-custom" 
+                    readOnly
+                    placeholder="Click to edit..."
+                    style={{ cursor: "pointer", backgroundColor: "#fff" }}
+                    value={header[k]} 
+                    onClick={() => setIsRemarkOpen(true)}
+                  />
+                  <RemarkModal 
+                    isOpen={isRemarkOpen}
+                    value={header[k]}
+                    onClose={() => setIsRemarkOpen(false)}
+                    onSave={(val) => { setHeader({ ...header, Remark: val }); setIsRemarkOpen(false); }}
+                  />
+                </div>
               ) : (
                 <input className="form-input-custom" value={header[k]} onChange={(e) => setHeader({ ...header, [k]: e.target.value })} />
               )}
@@ -199,7 +356,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
             <button className="lot-tab-close" onClick={(e) => { e.stopPropagation(); deleteLot(lot.id); }}>×</button>
           </div>
         ))}
-        <button onClick={addLot} style={{ border: "none", background: "none", color: "#007bff", fontSize: "18px", padding: "0 10px", cursor: "pointer" }}>+</button>
+        <button className="custom-btn-effect" onClick={addLot} style={{ border: "none", background: "none", color: "#007bff", fontSize: "18px", padding: "0 10px", cursor: "pointer" }}>+</button>
       </div>
 
       {/* LOT Content */}
@@ -212,7 +369,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
               <button className="btn-copy-outline" style={{ padding: "1px 8px", fontSize: "11px" }} onClick={() => duplicateLot(lot)}>❐ Copy LOT</button>
             </div>
             
-            {/* 改良版的模板選擇器 (帶有選項刪除按鈕) */}
             <div className="d-flex align-items-center gap-2" style={{ position: "relative" }}>
               <div className="custom-tpl-dropdown">
                 <button className="tpl-dropdown-trigger" onClick={() => setShowTplList(showTplList === lot.id ? null : lot.id)}>
@@ -222,15 +378,15 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                   <div className="tpl-dropdown-menu">
                     {templates.length === 0 && <div className="tpl-no-data">No templates saved</div>}
                     {templates.map((t, idx) => (
-                      <div key={idx} className="tpl-option-item">
-                        <span className="tpl-name" onClick={() => applyTemplate(lot.id, t)}>{t.name}</span>
+                      <div key={idx} className="tpl-option-item" onClick={() => applyTemplate(lot.id, t)}>
+                        <span className="tpl-name">{t.name}</span>
                         <button className="tpl-del-btn" onClick={(e) => { e.stopPropagation(); deleteTemplateAction(idx); }}>🗑️</button>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-              <button onClick={() => saveAsTemplate(lot)} style={{ padding: "2px 10px", border: "1px solid #ffc107", background: "#fff9e6", borderRadius: "4px", fontSize: "11px", fontWeight: "bold" }}>⭐ Save Template</button>
+              <button className="custom-btn-effect" onClick={() => saveAsTemplate(lot)} style={{ padding: "2px 10px", border: "1px solid #ffc107", background: "#fff9e6", borderRadius: "4px", fontSize: "11px", fontWeight: "bold" }}>⭐ Save Template</button>
             </div>
           </div>
 
@@ -240,72 +396,50 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                 <AgGridReact
                   rowData={s.rowData}
                   columnDefs={columnDefs}
-                  headerHeight={26}  
-                  rowHeight={26}
-                  domLayout="autoHeight"
-                  rowDragManaged={true}
-                  animateRows={true}
+                  headerHeight={26} rowHeight={26} domLayout="autoHeight"
+                  rowDragManaged={true} animateRows={true}
                   context={{ lotId: lot.id, stressId: s.id }}
                   onRowDragEnd={(e) => onRowDragEnd(e, lot.id, s.id)}
                   getRowId={(p) => p.data?._rid}
                   defaultColDef={{ resizable: true, sortable: true, singleClickEdit: true }}
                 />
               </div>
-              <button className="btn-add-step" style={{ marginTop: "4px", fontSize: "11px" }} onClick={() => addRow(lot.id, s.id)}>+ Add Step</button>
+              <button className="btn-add-step custom-btn-effect" style={{ marginTop: "4px", fontSize: "11px" }} onClick={() => addRow(lot.id, s.id)}>+ Add Step</button>
             </div>
           ))}
         </div>
       ))}
 
       <div className="form-actions-bar text-end" style={{ padding: "10px", borderTop: "1px solid #eee" }}>
-        <button className="btn-success-lg" style={{ padding: "5px 30px" }} onClick={handleSave}>Save Project</button>
+        <button className="btn-success-lg custom-btn-effect" style={{ padding: "5px 30px" }} onClick={handleSave}>Save Project</button>
       </div>
 
       <style>{`
         .form-select-custom, .form-input-custom { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; box-sizing: border-box; }
-        .grid-select { width: 100%; height: 100%; border: none; background: transparent; cursor: pointer; }
         .ag-theme-alpine .ag-row:hover { background-color: #f0f7ff !important; }
-        
-        /* 1. 表格內按鈕 📋 與 🗑️ 放大效果 */
-        .grid-icon-btn { 
-          background: none; border: none; cursor: pointer; font-size: 16px; 
-          transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.1s; 
-          display: flex; align-items: center; justify-content: center;
-        }
-        .grid-icon-btn:hover { 
-          transform: scale(1.3) translateY(-1px); 
-          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
-        }
-        .delete-btn:hover { color: #dc3545; }
-        .copy-btn:hover { color: #007bff; }
+        .ag-theme-alpine .ag-cell { padding: 0 !important; overflow: visible !important; display: flex; align-items: center; }
 
-        /* 2. 自定義模板下拉選單與刪除按鈕 */
+        .custom-btn-effect, .btn-add-step, .btn-success-lg, .tpl-del-btn, .tpl-dropdown-trigger {
+          transition: all 0.2s ease !important; cursor: pointer !important; outline: none !important; border: none;
+        }
+        .custom-btn-effect:hover, .btn-add-step:hover, .tpl-del-btn:hover, .tpl-dropdown-trigger:hover {
+          background-color: rgba(0, 0, 0, 0.08) !important; filter: brightness(0.9);
+        }
+        .btn-success-lg:hover {
+          background-color: #218838 !important; filter: brightness(0.9); box-shadow: 0 4px 6px rgba(0,0,0,0.1); transform: translateY(-1px);
+        }
+        .grid-icon-btn { background: none; border: none; font-size: 16px; transition: transform 0.2s; display: flex; align-items: center; justify-content: center; outline: none !important; }
+        .grid-icon-btn:hover { transform: scale(1.3) translateY(-1px); }
+        
+        .dropdown-opt-item:hover { background-color: #007bff !important; color: white !important; }
         .custom-tpl-dropdown { position: relative; width: 141px; }
-        .tpl-dropdown-trigger { 
-          width: 100%; height: 20px; border: 1px solid #ccc; background: #fff; 
-          text-align: left; padding: 0 8px; font-size: 11px; border-radius: 4px; cursor: pointer;
-        }
-        .tpl-dropdown-menu { 
-          position: absolute; top: 28px; left: 0; width: 141px; background: #fff; 
-          border: 1px solid #ccc; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 4px; z-index: 1000;
-        }
-        .tpl-option-item { 
-          display: flex; align-items: center; justify-content: space-between; 
-          padding: 6px 10px; border-bottom: 1px solid #f0f0f0; 
-        }
-        .tpl-option-item:hover { background: #f8f9fa; }
-        .tpl-name { flex-grow: 1; cursor: pointer; font-size: 12px; color: #333; }
-        .tpl-del-btn { 
-          background: none; border: none; color: #bbb; cursor: pointer; font-size: 13px; 
-          padding: 2px 5px; transition: all 0.2s;
-        }
-        .tpl-del-btn:hover { color: #dc3545; transform: scale(1.2); }
-        .tpl-no-data { padding: 10px; font-size: 11px; color: #999; text-align: center; }
-
-        /* 3. 拖曳圖示修正 */
-        .ag-theme-alpine .ag-row-drag { margin-right: 8px; color: #999; }
-        .ag-theme-alpine { --ag-grid-size: 3px; --ag-font-size: 12px; }
-        
+        .tpl-dropdown-trigger { width: 100%; height: 24px; border: 1px solid #ccc; background: #fff; text-align: left; padding: 0 8px; font-size: 11px; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; }
+        .tpl-dropdown-menu { position: absolute; top: 28px; left: 0; width: 160px; background: #fff; border: 1px solid #ccc; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 4px; z-index: 10000; overflow: hidden; }
+        .tpl-option-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
+        .tpl-option-item:hover { background-color: #f0f7ff !important; }
+        .tpl-name { flex: 1; font-size: 12px; color: #333; }
+        .tpl-del-btn { background: transparent !important; color: #bbb; font-size: 14px; padding: 4px; display: flex; align-items: center; justify-content: center; }
+        .tpl-del-btn:hover { color: #dc3545 !important; transform: scale(1.2); }
       `}</style>
     </div>
   );
