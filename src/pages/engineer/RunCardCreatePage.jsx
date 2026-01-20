@@ -33,7 +33,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   const newRow = () => ({
     _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2),
     stress: "", type: "", operation: "", condition: "",
-    sampleSize: "", programName: "", testProgram: "", testScript: "", note: "",
+     programName: "", testProgram: "", testScript: "", note: "",
   });
 
   const createInitialLot = () => ({
@@ -150,10 +150,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     { headerName: "Type", field: "type", width: 120, cellRenderer: (p) => { const rows = stressMeta[p.data.stress] || []; const types = [...new Set(rows.map((r) => r.Type).filter(Boolean))]; return ( <select className="grid-select" value={p.value || ""} disabled={!p.data.stress} onChange={(e) => updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { type: e.target.value, operation: "", condition: "" })}> <option value="">-- Type --</option> {types.map((t) => <option key={t} value={t}>{t}</option>)} </select> ); }, },
     { headerName: "Operation", field: "operation", width: 140, cellRenderer: (p) => { const rows = stressMeta[p.data.stress] || []; const ops = rows.filter((r) => r.Type === p.data.type).map((r) => r.Operation).filter(Boolean); return ( <select className="grid-select" value={p.value || ""} disabled={!p.data.type} onChange={(e) => { const match = rows.find((r) => r.Type === p.data.type && r.Operation === e.target.value); updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { operation: e.target.value, condition: match?.Condition || "" }); }}> <option value="">-- Operation --</option> {ops.map((o) => <option key={o} value={o}>{o}</option>)} </select> ); }, },
     { headerName: "Condition", field: "condition", editable: true, width: 120 },
-    { headerName: "Sample Size", field: "sampleSize", editable: true, width: 110 },
     { headerName: "Program Name", field: "programName", editable: true, width: 130 },
-    { headerName: "Test Program", field: "testProgram", editable: true, width: 115 },
-    { headerName: "Test Script", field: "testScript", editable: true, width: 95 },
+    { headerName: "Test Program", field: "testProgram", editable: true, width: 120 },
+    { headerName: "Test Script", field: "testScript", editable: true, width: 110 },
     { headerName: "Note", field: "note", editable: true, width: 150 },
     { headerName: "", width: 80, pinned: "right", cellRenderer: (p) => ( 
       <div className="d-flex gap-2 justify-content-center align-items-center h-100"> 
@@ -306,6 +305,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         /* 3. 拖曳圖示修正 */
         .ag-theme-alpine .ag-row-drag { margin-right: 8px; color: #999; }
         .ag-theme-alpine { --ag-grid-size: 3px; --ag-font-size: 12px; }
+        
       `}</style>
     </div>
   );
