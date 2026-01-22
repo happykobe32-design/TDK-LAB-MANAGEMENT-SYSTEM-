@@ -132,6 +132,7 @@ export default function CheckInOutPage() {
         width: 90,
         pinned: "left",
         valueGetter: (params) => {
+          if (params.data.endTime === "SKIPPED") return "Skipped";
           if (params.data.endTime) return "Completed";
           if (params.data.startTime) return "In-Process";
           return "Init";
@@ -142,6 +143,7 @@ export default function CheckInOutPage() {
           let textColor = "#64748b";
           if (status === "In-Process") { bgColor = "#fef3c7"; textColor = "#92400e"; }
           if (status === "Completed") { bgColor = "#dcfce7"; textColor = "#166534"; }
+          if (status === "Skipped") { bgColor = "#f1f5f9"; textColor = "#94a3b8"; }
           return (
             <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
               <span style={{ background: bgColor, color: textColor, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: "bold" }}>
@@ -172,8 +174,8 @@ export default function CheckInOutPage() {
         cellStyle: (params) => ({ background: canEdit ? "#fffde7" : null }) 
       },
       { headerName: "Program Name", field: "programName", width: 140, editable: false },
-      { headerName: "Test Program", field: "testProgram", width: 140, editable: false,},
-      { headerName: "Test Script", field: "testScript", width: 140, editable: false,},
+      { headerName: "Test Program", field: "testProgram", width: 140, editable: false, cellStyle: { background: "#ffffff" } },
+      { headerName: "Test Script", field: "testScript", width: 140, editable: false, cellStyle: { background: "#ffffff" } },
       {
         headerName: "CHECK-IN",
         field: "startTime",
@@ -186,17 +188,18 @@ export default function CheckInOutPage() {
             const prevRow = params.api.getDisplayedRowAtIndex(rowIndex - 1);
             isPrevStepDone = !!(prevRow?.data?.endTime);
           }
+          const isSkipped = params.data.endTime === "SKIPPED";
           return (
             <button
-              disabled={!!params.value || !isPrevStepDone}
-              className={`op-button btn-hover-effect ${params.value ? "done" : (isPrevStepDone ? "start" : "waiting")}`}
+              disabled={!!params.value || !isPrevStepDone || isSkipped}
+              className={`op-button btn-hover-effect ${params.value ? (isSkipped ? "waiting" : "done") : (isPrevStepDone && !isSkipped ? "start" : "waiting")}`}
               onClick={() => {
                 if (window.confirm("Are you sure you want to START?")) {
                   syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { startTime: new Date().toLocaleString([], { hour12: false }) });
                 }
               }}
             >
-              {params.value || (isPrevStepDone ? "▶ START" : "🔒 LOCKED")}
+              {isSkipped ? "SKIPPED" : (params.value || (isPrevStepDone ? "▶ START" : "🔒 LOCKED"))}
             </button>
           );
         },
@@ -206,19 +209,22 @@ export default function CheckInOutPage() {
         field: "endTime",
         width: 130,
         cellStyle: (params) => ({ background: (canEdit && params.data.startTime && !params.value) ? "#fffde7" : null }),
-        cellRenderer: (params) => (
-          <button
-            disabled={!params.data.startTime || !!params.value}
-            className={`op-button btn-hover-effect ${params.data.startTime && !params.value ? "finish" : "waiting"}`}
-            onClick={() => {
-              if (window.confirm("Are you sure you want to FINISH?")) {
-                syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { endTime: new Date().toLocaleString([], { hour12: false }) });
-              }
-            }}
-          >
-            {params.value || "■ FINISH"}
-          </button>
-        ),
+        cellRenderer: (params) => {
+          const isSkipped = params.value === "SKIPPED";
+          return (
+            <button
+              disabled={!params.data.startTime || !!params.value || isSkipped}
+              className={`op-button btn-hover-effect ${params.data.startTime && !params.value ? "finish" : "waiting"}`}
+              onClick={() => {
+                if (window.confirm("Are you sure you want to FINISH?")) {
+                  syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { endTime: new Date().toLocaleString([], { hour12: false }) });
+                }
+              }}
+            >
+              {isSkipped ? "SKIPPED" : (params.value || "■ FINISH")}
+            </button>
+          );
+        }
       },
       { 
         headerName: "Hardware", 
@@ -238,6 +244,46 @@ export default function CheckInOutPage() {
         autoHeight: true,
         cellStyle: (params) => ({ lineHeight: '1.5', padding: '8px', background: canEdit ? "#fffde7" : null })
       },
+      {
+        headerName: "", // SKIP
+        width: 50,
+        cellRenderer: (params) => {
+          const rowIndex = params.node.rowIndex;
+          let isPrevStepDone = true;
+          if (rowIndex > 0) {
+            const prevRow = params.api.getDisplayedRowAtIndex(rowIndex - 1);
+            isPrevStepDone = !!(prevRow?.data?.endTime);
+          }
+          const isProcessing = !!params.data.startTime || !!params.data.endTime;
+          
+          return (
+            <button
+              disabled={isProcessing || !isPrevStepDone}
+              style={{
+                width: "100%",
+                height: "24px",
+                fontSize: "10px",
+                fontWeight: "bold",
+                cursor: (isProcessing || !isPrevStepDone) ? "not-allowed" : "pointer",
+                background: (isProcessing || !isPrevStepDone) ? "#f1f5f9" : "#fff",
+                color: (isProcessing || !isPrevStepDone) ? "#cbd5e1" : "#ef4444",
+                border: `1px solid ${(isProcessing || !isPrevStepDone) ? "#cbd5e1" : "#ef4444"}`,
+                borderRadius: "4px"
+              }}
+              onClick={() => {
+                if (window.confirm("Skip this step?")) {
+                  syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { 
+                    startTime: "SKIPPED", 
+                    endTime: "SKIPPED" 
+                  });
+                }
+              }}
+            >
+              SKIP
+            </button>
+          );
+        }
+      }
     ];
   }, [syncUpdate, currentProject]);
 
@@ -250,7 +296,6 @@ export default function CheckInOutPage() {
 
   const activeLot = currentProject?.lots[activeLotTab];
 
-  // 渲染 Excel 風格基本資料（自動折行，不截斷）
   const renderHeaderExcel = () => {
     if (!currentProject) return null;
     const h = currentProject.header;
@@ -298,7 +343,6 @@ export default function CheckInOutPage() {
   return (
     <div style={{ padding: 0, background: "#f1f5f9", minHeight: "100vh", fontFamily: "system-ui", display: "flex", overflow: "hidden", position: 'relative' }}>
       
-      {/* 左側列表 */}
       <div style={{ 
         width: isSidebarOpen ? "280px" : "0px", 
         transition: "width 0.3s ease", 
@@ -341,12 +385,10 @@ export default function CheckInOutPage() {
         </div>
       </div>
 
-      {/* 收縮按鈕：移動到左邊緣交界處，不擋表格內容 */}
       <div 
         onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
         className="sidebar-toggle-btn" 
         style={{ 
-          /* 當側邊欄打開時，按鈕出現在列表邊緣；收起時，出現在最左邊 */
           left: isSidebarOpen ? '280px' : '0px', 
           borderRadius: isSidebarOpen ? '0 50% 50% 0' : '0 50% 50% 0' 
         }}
@@ -354,18 +396,15 @@ export default function CheckInOutPage() {
         {isSidebarOpen ? "❮" : "❯"}
       </div>
 
-      {/* 右側內容區 */}
       <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", background: "#f8fafc", transition: "all 0.3s ease" }}>
         {!currentProject ? (
           <div style={{ background: "#fff", padding: "100px", textAlign: "center", color: "#94a3b8" }}>Select an active project to begin</div>
         ) : (
           <>
-            {/* 頂部基本資料與左側列表對齊 */}
             <div style={{ background: "#fff", borderBottom: "1px solid #cbd5e1" }}>
               {renderHeaderExcel()}
             </div>
 
-            {/* Lot 分頁區 */}
             <div style={{ display: "flex", gap: "0px", background: "#f1f5f9", padding: '0px 0 0 0px' }}>
               {currentProject.lots.map((lot, idx) => {
                 const progress = getLotProgress(lot);
@@ -396,7 +435,6 @@ export default function CheckInOutPage() {
               })}
             </div>
 
-            {/* 表格內容區 */}
             <div style={{ flexGrow: 1, overflowY: "auto", padding: "0" }}>
               <div style={{ background: "#000000ff", borderTop: '1px solid #000000ff' }}>
                 {activeLot && (
@@ -430,7 +468,6 @@ export default function CheckInOutPage() {
       </div>
 
       <style>{`
-        /* 1. 收縮按鈕：不遮擋表格第一欄，移至邊緣 */
         .sidebar-toggle-btn {
           position: absolute; top: 10px; 
           width: 20px; height: 30px; background: #fff; border: 1px solid #cbd5e1;
@@ -440,13 +477,11 @@ export default function CheckInOutPage() {
         }
         .sidebar-toggle-btn:hover { background: #e2e8f0; color: #1e3a8a; width: 28px; }
 
-        /* 通用按鈕懸停灰底 */
         .btn-hover-effect:hover {
           background-color: #e2e8f0 !important;
           transition: background-color 0.2s;
         }
 
-        /* Ag-Grid 邊框細節 */
         .custom-grid .ag-header { background-color: #f8fafc !important; border-bottom: 2px solid #000 !important; }
         .custom-grid .ag-row { border-bottom: 1px solid #000 !important; } 
         .custom-grid .ag-cell { border-right: 1px solid #000 !important; display: flex; align-items: center; }
