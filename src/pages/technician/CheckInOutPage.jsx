@@ -129,7 +129,7 @@ export default function CheckInOutPage() {
     return [
       {
         headerName: "STATUS",
-        width: 100,
+        width: 90,
         pinned: "left",
         valueGetter: (params) => {
           if (params.data.endTime) return "Completed";
@@ -166,30 +166,18 @@ export default function CheckInOutPage() {
       { headerName: "Condition", field: "condition", width: 140, editable: false },
       { 
         headerName: "Unit/Q'ty", 
-        field: "sampleSize", 
-        width: 100, 
+        field: "qty", 
+        width: 90, 
         editable: canEdit,
         cellStyle: (params) => ({ background: canEdit ? "#fffde7" : null }) 
       },
       { headerName: "Program Name", field: "programName", width: 140, editable: false },
-      { 
-        headerName: "Test Program", 
-        field: "testProgram", 
-        width: 140, 
-        editable: canEdit,
-        cellStyle: (params) => ({ background: canEdit ? "#fffde7" : null })
-      },
-      { 
-        headerName: "Test Script", 
-        field: "testScript", 
-        width: 140, 
-        editable: canEdit,
-        cellStyle: (params) => ({ background: canEdit ? "#fffde7" : null })
-      },
+      { headerName: "Test Program", field: "testProgram", width: 140, editable: false,},
+      { headerName: "Test Script", field: "testScript", width: 140, editable: false,},
       {
         headerName: "CHECK-IN",
         field: "startTime",
-        width: 165,
+        width: 130,
         cellStyle: (params) => ({ background: (canEdit && !params.value) ? "#fffde7" : null }),
         cellRenderer: (params) => {
           const rowIndex = params.node.rowIndex;
@@ -216,7 +204,7 @@ export default function CheckInOutPage() {
       {
         headerName: "CHECK-OUT",
         field: "endTime",
-        width: 165,
+        width: 130,
         cellStyle: (params) => ({ background: (canEdit && params.data.startTime && !params.value) ? "#fffde7" : null }),
         cellRenderer: (params) => (
           <button
@@ -233,16 +221,16 @@ export default function CheckInOutPage() {
         ),
       },
       { 
-        headerName: "Hardware/Oven", 
+        headerName: "Hardware", 
         field: "hardware", 
-        width: 150, 
+        width: 95, 
         editable: canEdit,
         cellStyle: (params) => ({ background: canEdit ? "#fffde7" : null }) 
       },
       { 
         headerName: "Note", 
-        field: "execNote", 
-        width: 200, 
+        field: "note", 
+        width: 95, 
         editable: canEdit,
         cellEditor: "agLargeTextCellEditor",
         cellEditorPopup: true,
