@@ -1,8 +1,17 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom"; // 跳轉
 
 export default function RunCardListPage() {
+  const navigate = useNavigate(); // 初始化 navigate
   const [allData, setAllData] = useState([]);
-  
+
+  //進階create跳轉（加入確認提示）
+  const handleAdvancedEdit = (row) => {
+    if (window.confirm("Are you sure you want to go to create page edit?")) {
+      navigate(`/create?pIdx=${row.pIdx}`);
+    }
+  };
+
   // --- 篩選狀態 ---
   const [searchText, setSearchText] = useState(""); 
   const [quickDateRange, setQuickDateRange] = useState("3m"); 
@@ -10,14 +19,8 @@ export default function RunCardListPage() {
   const [endDate, setEndDate] = useState("");
   const [colFilters, setColFilters] = useState({});
   const [colMenuSearch, setColMenuSearch] = useState({}); 
-
-  // --- 編輯狀態 ---
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({});
-
   // --- 勾選與刪除狀態 ---
   const [selectedIds, setSelectedIds] = useState([]);
-
   // --- 分頁狀態 ---
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -47,14 +50,7 @@ export default function RunCardListPage() {
     { key: "hardware", label: "Hardware" },
     { key: "note", label: "Note" }
   ];
-
-  const DEFAULT_VISIBLE_COLUMNS = [
-    "status",
-    "lotId",
-    "stress",
-    "qr",
-    "owner",
-  ];
+  const DEFAULT_VISIBLE_COLUMNS = ["status","lotId","stress","qr","owner",];
 
   const [visibleCols, setVisibleCols] = useState(
     columnConfig.reduce((acc, col) => {
@@ -105,8 +101,19 @@ export default function RunCardListPage() {
         (lot.stresses || []).forEach((stressObj, sIdx) => {
           (stressObj.rowData || []).forEach((row, rIdx) => {
             let stepStatus = "Init";
-            if (row.endTime) stepStatus = "Completed";
-            else if (row.startTime) stepStatus = "In-Process";
+
+            // 1. 先判斷是否為 Skipped (檢查時間欄位是否包含 SKIPPED 字眼)
+            if (String(row.endTime).toUpperCase() === "SKIPPED" || String(row.startTime).toUpperCase() === "SKIPPED") {
+              stepStatus = "Skipped";
+            } 
+            // 2. 再判斷原本的 Completed (確保排除 Skipped)
+            else if (row.endTime) {
+              stepStatus = "Completed";
+            } 
+            // 3. 判斷 In-Process
+            else if (row.startTime) {
+              stepStatus = "In-Process";
+            }
 
             flattened.push({
               id: `${pIdx}-${lIdx}-${sIdx}-${rIdx}`, 
@@ -157,23 +164,18 @@ export default function RunCardListPage() {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-// --- 真正從前端刪除並同步 (修正空殼問題版本) ---
+  // --- 真正從前端刪除並同步 ---
   const handleDeleteSelected = () => {
-    if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} records? This cannot be undone.`)) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} records?`)) return;
 
-    // 1. 取得原始資料
     let raw = JSON.parse(localStorage.getItem("all_projects") || "[]");
     const targetSet = new Set(selectedIds);
 
-    // 2. 深度清理資料結構 (由下而上)
     raw.forEach((proj, pIdx) => {
       if (!proj.lots) return;
-
       proj.lots.forEach((lot, lIdx) => {
         if (!lot.stresses) return;
-
         lot.stresses.forEach((stress, sIdx) => {
-          // 只保留「不在勾選名單中」的 rowData
           if (stress.rowData) {
             stress.rowData = stress.rowData.filter((row, rIdx) => {
               const currentId = `${pIdx}-${lIdx}-${sIdx}-${rIdx}`;
@@ -181,60 +183,17 @@ export default function RunCardListPage() {
             });
           }
         });
-
-        // 如果該 stress 裡的 rowData 被刪光了，就把這個 stress 移除
         lot.stresses = lot.stresses.filter(s => s.rowData && s.rowData.length > 0);
       });
-
-      // 如果該 lot 裡的 stresses 被刪光了，就把這個 lot 移除
       proj.lots = proj.lots.filter(l => l.stresses && l.stresses.length > 0);
     });
 
-    // 3. 關鍵：徹底移除沒有任何 Lot 的 Project 物件
-    // 這一步會讓 Check In/Out 頁面的左側選單完全清空該專案名稱
     const cleanedRaw = raw.filter(p => p.lots && p.lots.length > 0);
-
-    // 4. 儲存並同步
     localStorage.setItem("all_projects", JSON.stringify(cleanedRaw));
-    
-    // 強制觸發 storage 事件，讓其他視窗(Check-In/Out)立即知道資料變了
     window.dispatchEvent(new Event('storage'));
 
     setSelectedIds([]);
-    loadData(); // 重新整理列表
-  };
-
-  // --- 編輯邏輯 ---
-  const handleStartEdit = (row) => {
-    setEditingId(row.id);
-    setEditForm({ ...row });
-  };
-
-  const handleSaveEdit = () => {
-    const raw = JSON.parse(localStorage.getItem("all_projects") || "[]");
-    const t = editForm;
-    
-    try {
-      const rowRef = raw[t.pIdx].lots[t.lIdx].stresses[t.sIdx].rowData[t.rIdx];
-      // 同步所有可編輯欄位回原始資料結構
-      rowRef.condition = t.condition;
-      rowRef.programName = t.programName;
-      rowRef.testProgram = t.testProgram;
-      rowRef.testScript = t.testScript;
-      rowRef.startTime = t.checkIn;
-      rowRef.endTime = t.checkOut;
-      rowRef.qty = t.qty;
-      rowRef.hardware = t.hardware;
-      rowRef.note = t.note;
-      rowRef.type = t.type;
-      rowRef.operation = t.operation;
-
-      localStorage.setItem("all_projects", JSON.stringify(raw));
-      setEditingId(null);
-      loadData();
-    } catch (e) {
-      alert("Save failed. The data structure might have changed.");
-    }
+    loadData();
   };
 
   const stats = useMemo(() => ({
@@ -386,29 +345,36 @@ export default function RunCardListPage() {
             <div className="dropdown">
               <button className="action-button-custom" data-bs-toggle="dropdown" data-bs-auto-close="outside">⚙️ Columns</button>
               <ul className="dropdown-menu shadow p-2" style={{ maxHeight: '400px', overflowY: 'auto', minWidth: '160px' }}>
-                {/* 全選與不選按鈕：使用 d-flex 讓它們並排，縮小字體 */}
-                <li className="d-flex justify-content-between border-bottom mb-1 pb-1 px-1">
-                  <button className="btn btn-link p-0 text-decoration-none fw-bold" style={{ fontSize: '11px' }} 
-                    onClick={() => {
-                      const next = {}; columnConfig.forEach(c => next[c.key] = true); setVisibleCols(next);
-                    }}>全選</button>
-                  <button className="btn btn-link p-0 text-decoration-none text-muted" style={{ fontSize: '11px' }} 
-                    onClick={() => {
-                      const next = {}; columnConfig.forEach(c => next[c.key] = false); setVisibleCols(next);
-                    }}>清空</button>
+                <li className="dropdown-item py-1 px-2 border-bottom mb-1">
+                  <label className="d-flex align-items-center w-100 m-0 fw-bold" style={{ cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      className="me-2"
+                      style={{ transform: 'scale(0.9)' }} 
+                      // 判斷是否全部欄位都已勾選
+                      checked={Object.values(visibleCols).every(v => v === true)}
+                      // 處理全選或全不選邏輯
+                      onChange={(e) => {
+                        const isAllChecked = e.target.checked;
+                        const next = {};
+                        columnConfig.forEach(c => next[c.key] = isAllChecked);
+                        setVisibleCols(next);
+                      }} 
+                    /> 
+                    <span style={{ fontSize: '12px' }}>Select All</span>
+                  </label>
                 </li>
-                {/* 修改項目的間距：移除原本的 padding (py-0)，讓清單更擠 */}
                 {columnConfig.map(col => (
                   <li key={col.key} className="dropdown-item py-0 px-2 d-flex align-items-center" style={{ height: '15px' }}>
                     <label className="d-flex align-items-center w-100 m-0" style={{ cursor: 'pointer' }}>
                       <input 
                         type="checkbox" 
-                        className="me-1"
-                        style={{ transform: 'scale(0.8)' }} // 縮小勾選框
+                        className="me-2"
+                        style={{ transform: 'scale(1)' }} 
                         checked={visibleCols[col.key]} 
                         onChange={() => setVisibleCols(prev => ({ ...prev, [col.key]: !prev[col.key] }))} 
                       /> 
-                      <span style={{ fontSize: '12px' }}>{col.label}</span>
+                      <span style={{ fontSize: '13px' }}>{col.label}</span>
                     </label>
                   </li>
                 ))}
@@ -416,7 +382,6 @@ export default function RunCardListPage() {
             </div>
             <button className="action-button-custom btn-reset-red" onClick={handleReset}>⟳ Reset All</button>
             
-            {/* 勾選後跳出的刪除按鈕 */}
             {selectedIds.length > 0 && (
               <button className="btn btn-danger btn-sm shadow-sm animate-fade-in" onClick={handleDeleteSelected}>
                 🗑️ Delete Selected ({selectedIds.length})
@@ -427,7 +392,7 @@ export default function RunCardListPage() {
         </div>
 
         {/* 表格區 */}
-        <div className="table-container-fixed shadow-sm">
+        <div className="table-container-fixed">
           <div className="table-responsive custom-scrollbar">
             <table className="table-fixed-layout">
               <thead>
@@ -441,14 +406,21 @@ export default function RunCardListPage() {
                   {columnConfig.map(col => {
                     if (!visibleCols[col.key]) return null;
                     const isFiltered = colFilters[col.key] && colFilters[col.key].length > 0;
+                    // 修改點 2: 在這裡手動控制每個欄位的寬度
+                    let colWidth = '150px'; // 預設寬度
+                    if (col.key === 'status') colWidth = '100px';
+                    if (col.key === 'createdDate') colWidth = '120px';
+                    if (col.key === 'remark') colWidth = '200px';
+                    
                     return (
                       <th key={col.key}>
                         <div className="d-flex align-items-center gap-1 justify-content-between">
                           <span className={isFiltered ? "text-warning" : ""}>{col.label}</span>
-                          <span className="dropdown">
+                          <div className="dropdown" style={{ position: 'static' }}>
+                            {/* 修改點 3: 加上 dropdown-menu-end 確保下拉選單不超出右側邊界 */}
                             <span className={`filter-btn-excel ${isFiltered ? 'active' : ''}`} data-bs-toggle="dropdown" data-bs-auto-close="outside">▼</span>
-                            <div className="dropdown-menu shadow-lg p-2 excel-dropdown-custom">
-                              <input 
+                            <div className="dropdown-menu shadow-lg p-2 excel-dropdown-custom dropdown-menu-end">
+                              <input
                                 type="text" className="form-control form-control-sm mb-2" 
                                 placeholder="Filter..." 
                                 onClick={(e) => e.stopPropagation()}
@@ -472,19 +444,18 @@ export default function RunCardListPage() {
                               <div className="dropdown-divider"></div>
                               <button className="btn btn-link btn-sm p-0 text-danger text-decoration-none" onClick={() => setColFilters(prev => ({...prev, [col.key]: []}))}>Clear</button>
                             </div>
-                          </span>
+                          </div>
                         </div>
                       </th>
                     );
                   })}
-                  <th className="text-center" style={{width:'100px'}}>ACTION</th>
+                  <th className="text-center" style={{ width: '60px' }}>Edit</th>
                 </tr>
               </thead>
               <tbody>
                 {currentTableData.map((r, i) => {
-                  const isEditing = editingId === r.id;
                   return (
-                    <tr key={r.id} className={`row-hover-effect ${isEditing ? 'editing-active' : ''}`}>
+                    <tr key={r.id} className="row-hover-effect">
                       <td className="text-center">
                         <input type="checkbox" className="form-check-input" 
                           checked={selectedIds.includes(r.id)}
@@ -494,37 +465,29 @@ export default function RunCardListPage() {
                       {columnConfig.map(col => {
                         if (!visibleCols[col.key]) return null;
                         
-                        // 狀態欄不開放直接編輯，透過時間自動判定
                         if (col.key === "status") {
-                           return <td key={col.key} className="text-center"><span className={`status-tag ${r.status.toLowerCase()}`}>{r.status}</span></td>;
+                          return <td key={col.key} className="text-center"><span className={`status-tag ${r.status.toLowerCase()}`}>{r.status}</span></td>;
                         }
 
                         return (
                           <td key={col.key}>
-                            {isEditing ? (
-                              <input 
-                                className="form-control form-control-xs" 
-                                value={editForm[col.key] || ""} 
-                                onChange={(e) => setEditForm({...editForm, [col.key]: e.target.value})}
-                              />
-                            ) : (
-                              <span className={col.key.includes('check') ? 'check-time-text' : ''}>
-                                {r[col.key]}
-                              </span>
-                            )}
+                            <span className={col.key.includes('check') ? 'check-time-text' : ''}>
+                              {r[col.key]}
+                            </span>
                           </td>
                         );
                       })}
                       <td className="text-center">
                         <div className="d-flex gap-2 justify-content-center">
-                          {isEditing ? (
-                            <>
-                              <button className="btn-icon-action save" onClick={handleSaveEdit}>💾</button>
-                              <button className="btn-icon-action cancel" onClick={() => setEditingId(null)}>✖️</button>
-                            </>
-                          ) : (
-                            <button className="btn-icon-action edit" onClick={() => handleStartEdit(r)}>✏️</button>
-                          )}
+                          {/* 僅保留進階編輯：點擊跳轉回 Create 頁面 */}
+                          <button 
+                            className="btn-icon-action advanced-edit" 
+                            title="Advanced Edit (Add/Delete Steps)"
+                            style={{ color: '#3b82f6', fontSize: '15px' }} 
+                            onClick={() => handleAdvancedEdit(r)}
+                          >
+                            📝
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -532,7 +495,7 @@ export default function RunCardListPage() {
                 })}
                 {Array.from({ length: Math.max(0, 10 - currentTableData.length) }).map((_, idx) => (
                   <tr key={`empty-${idx}`} className="row-empty">
-                    <td colSpan="100"></td>
+                    <td colSpan="100" style={{ height: '37px' }}></td>
                   </tr>
                 ))}
               </tbody>
@@ -541,62 +504,82 @@ export default function RunCardListPage() {
         </div>
 
         <style>{`
-          .main-page { width: 100%; min-height: 100vh; font-family: sans-serif; }
+          /* 頁面整體與容器佈局 */
+          .main-page { width: 100%; min-height: 120vh; font-family: sans-serif; }
           .container-fluid { padding-top: 0px !important; padding-bottom: 0px; }
 
-          .stats-box { background: #f8fafc; padding: 2px 5px; border-radius: 4px; }
-          .stats-title { font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 2px; }
+          /* 統計數據區塊 (Total, Completed 等數值框樣式) */
+          .stats-box { background: #fcfaf8ff; padding: 0px 3px; border-radius: 4px; }
+          .stats-title { font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 0px; }
           .stats-num { font-size: 18px; font-weight: 700; }
 
+          /* 搜尋列與日期選擇器外觀 */
           .search-wrap { position: relative; }
           .search-icon-fixed { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 14px; }
           .search-bar-custom { width: 100%; padding: 7px 10px 7px 32px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; outline: none; }
           .date-input-custom { border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; padding: 5px 8px; color: #475569; outline: none; background: #fff; }
 
+          /* 欄位選擇與重設按鈕樣式 */
           .action-button-custom { border: 1px solid #e2e8f0; background: #fff; padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: 0.2s; }
           .action-button-custom:hover { background: #f1f5f9; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
           .btn-reset-red { color: #dc2626; border-color: #fee2e2; }
 
-          .custom-pagination { display: flex; gap: 4px; }
+          /* 分頁按鈕樣式 (數字與左右箭頭) */
+          .custom-pagination { display: flex; gap: 0px; }
           .page-btn { border: 1px solid #e2e8f0; background: #fff; min-width: 32px; height: 32px; font-size: 12px; font-weight: 600; border-radius: 4px; transition: 0.2s; cursor: pointer; }
           .page-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 
+          /* 表格外部容器 (控制陰影與表格高度) */
+          /* 若下拉選單被切掉，可將此處 overflow 改為 visible */
           .table-container-fixed { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
-          .table-responsive { height: 75vh; overflow: auto; }
+          .table-responsive { height: 120vh; overflow: auto; }
           
-          .table-fixed-layout { width: auto; min-width: 100%; border-collapse: separate; border-spacing: 0; table-layout: auto; border-top: 1px solid #e2e8f0; }
+          /* 表格本體結構 */
+          .table-fixed-layout { width: auto; min-width: 100%; border-collapse: separate; border-spacing: 0; table-layout: auto; border-top: 0px solid #e2e8f0; }
+          
+          /* 表格標頭 (可在此調整標頭字體與線條顏色) */
           .table-fixed-layout thead th { 
-            position: sticky; top: 0; z-index: 10; background: #fff !important; 
-            color: #000; font-weight: 900; border-bottom: 2px solid #e2e8f0; border-right: 1px solid #e2e8f0; 
-            padding: 10px 15px; font-size: 11px; white-space: nowrap; 
+            position: sticky; top: 0; z-index: 10; background: #ffffffff !important; 
+            color: #000; font-weight: 900; 
+            border-bottom: 2px solid #fafcffff; /* 標頭橫線 */
+            border-right: 1px solid #e2e8f0;  /* 標頭垂直線 */
+            padding: 3px 15px; font-size: 11px; white-space: nowrap; 
           }
+          
+          /* 表格資料列 (可在此調整內容字體與線條顏色) */
           .table-fixed-layout tbody td { 
-            background: #d1d6db77; color: #000; font-size: 12px; padding: 6px 15px; 
-            border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; white-space: nowrap;
+            background: #dbd4d177; color: #000; font-size: 10px; padding: 3px 0px; 
+            border-bottom: 0px solid #e2e8f0; /* 內容橫線 */
+            border-right: 0px solid #e2e8f0;  /* 內容垂直線 */
+            white-space: nowrap;
           }
+          
+          /* 滑鼠滑過資料列時的變色效果 */
           .row-hover-effect:hover td { background-color: #e2e8f0 !important; }
-          .editing-active td { background-color: #fff9db !important; }
 
-          .form-control-xs { padding: 2px 5px; font-size: 12px; height: 24px; border-radius: 3px; }
-
+          /* 操作圖示按鈕 (Edit 鉛筆等) */
           .btn-icon-action { border: none; background: transparent; cursor: pointer; font-size: 14px; padding: 2px 5px; border-radius: 4px; transition: 0.2s; }
           .btn-icon-action:hover { background: rgba(0,0,0,0.1); }
-          .btn-icon-action.save { color: #16a34a; }
-          .btn-icon-action.cancel { color: #dc2626; }
 
+          /* 時間文字顏色與狀態標籤 (Status Tag) 樣式 */
           .check-time-text { color: #3a2cf2ff !important; font-family: monospace; }
           .status-tag { padding: 3px 10px; border-radius: 12px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
           .status-tag.completed { background: #dcfce7; color: #166534; }
-          .status-tag.in-process { background: #fef9c3; color: #854d0e; }
-          .status-tag.init { background: #f1f5f9; color: #475569; }
+          .status-tag.in-process { background: #faf4b1ff; color: #854d0e; }
+          .status-tag.init { background: #a2a9b1ff; color: #475569; }
+          .status-tag.skipped { background: #ffffffff; /* 灰色背景 */color: #000000ff;}
 
+          /* 動態淡入效果 */
           .animate-fade-in { animation: fadeIn 0.3s ease-in; }
           @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 
+          /* 捲軸美化 (控制粗細與顏色) */
           .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
           .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-          .excel-dropdown-custom { min-width: 180px; }
-          .list-wrapper { max-height: 200px; overflow-y: auto; }
+          
+          /* Excel 篩選下拉選單寬度與內部捲軸 */
+          .excel-dropdown-custom { min-width: 0px; }
+          .list-wrapper { max-height: 100px; overflow-y: auto; }
         `}</style>
       </div>
     </div>

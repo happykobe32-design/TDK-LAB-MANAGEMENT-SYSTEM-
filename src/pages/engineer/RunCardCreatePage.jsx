@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useLocation } from "react-router-dom"; // 加入這行
 import ReactDOM from "react-dom";
 import { AgGridReact } from "ag-grid-react";
 import { ModuleRegistry } from "ag-grid-community";
@@ -134,6 +135,9 @@ const EditableDropdown = ({ value, options, onChange, placeholder, disabled }) =
 };
 
 export default function RunCardFormPage({ handleFinalSubmit }) {
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const pIdx = queryParams.get("pIdx"); // 獲取網址上的索引
   // 1. 狀態與初始值
   const initialHeader = {
     "Product Family": "", "Product": "", "Product ID": "", "Version": "",
@@ -164,6 +168,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
   // 2. 讀取資料
   useEffect(() => {
+    // 獲取 Meta 資料
     fetch(`${API_BASE}/api/meta`)
       .then((r) => r.json())
       .then(async (data) => {
@@ -185,7 +190,20 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     }
     const savedTemplates = JSON.parse(localStorage.getItem("runcard_templates") || "[]");
     setTemplates(savedTemplates);
-  }, []);
+
+    // --- 新增：編輯模式載入舊資料 ---
+    if (pIdx !== null) {
+      const allProjects = JSON.parse(localStorage.getItem("all_projects") || "[]");
+      const target = allProjects[parseInt(pIdx)];
+      if (target) {
+        setHeader(target.header);
+        setLots(target.lots);
+        if (target.lots && target.lots.length > 0) {
+          setActiveLotId(target.lots[0].id);
+        }
+      }
+    }
+  }, [pIdx]); // 監聽 pIdx 確保重載
 
   // 3. 操作邏輯
   const addLot = () => { const newLot = createInitialLot(); setLots((p) => [...p, newLot]); setActiveLotId(newLot.id); };
@@ -237,21 +255,57 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     }
   };
 
+  // 4. 修改後的儲存邏輯 (直接覆蓋你原本的 handleSave)
   const handleSave = () => {
     const requiredFields = ["Product Family", "Product", "Product ID", "Version", "QR", "Sample Size", "Owner"];
     for (let field of requiredFields) {
       if (!header[field]) return alert(`⚠️ Please fill in ${field}`);
     }
-    const isConfirmed = window.confirm(`Are you sure you want to create project: ${header["Product ID"]}?`);
-    if (!isConfirmed) return;
-    const newProject = { id: "proj_" + Date.now(), header, lots, createdAt: new Date().toLocaleString(), status: "Init" };
-    const existing = JSON.parse(localStorage.getItem("all_projects") || "[]");
-    localStorage.setItem("all_projects", JSON.stringify([...existing, newProject]));
-    if (handleFinalSubmit) handleFinalSubmit(newProject);
-    alert(`✅ Project: ${header["Product ID"]} saved!`);
-    setHeader(initialHeader);
-    const resetLot = createInitialLot();
-    setLots([resetLot]); setActiveLotId(resetLot.id);
+
+    const isEditMode = pIdx !== null;
+    const confirmMsg = isEditMode 
+      ? `Are you sure you want to update your Project: ${header["Product ID"]}?` 
+      : `Are you sure you want to CREATE project: ${header["Product ID"]}?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    const allProjects = JSON.parse(localStorage.getItem("all_projects") || "[]");
+    
+    // 準備要存入的物件
+    const projectData = { 
+      header, 
+      lots, 
+      status: isEditMode ? "Updated" : "Init" 
+    };
+
+    if (isEditMode) {
+      // 編輯模式：更新陣列中的特定位置
+      const idx = parseInt(pIdx);
+      allProjects[idx] = { 
+        ...allProjects[idx], // 保留原本的 ID 和 createdAt
+        ...projectData,
+        updatedAt: new Date().toLocaleString()
+      };
+    } else {
+      // 新增模式
+      const newProject = { 
+        id: "proj_" + Date.now(), 
+        createdAt: new Date().toLocaleString(),
+        ...projectData 
+      };
+      allProjects.push(newProject);
+    }
+
+    localStorage.setItem("all_projects", JSON.stringify(allProjects));
+    alert(isEditMode ? "✅ Project Updated!" : `✅ Project: ${header["Product ID"]} Saved!`);
+
+    // 儲存後的收尾工作
+    if (handleFinalSubmit) {
+      handleFinalSubmit(); 
+    } else {
+      // 如果沒有傳入 handleFinalSubmit，手動跳轉回清單頁
+      window.location.href = "#/list"; // 根據你的路由調整路徑
+    }
   };
 
   // 5. AG Grid Columns
