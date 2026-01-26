@@ -80,12 +80,13 @@ const EditableDropdown = ({ value, options, onChange, placeholder, disabled }) =
 
   return (
     <div ref={containerRef} className="editable-dropdown-container" style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", position: "relative" }}>
-      <input
+      <textarea
         className="grid-cell-input"
-        style={{ flexGrow: 1, border: "none", background: "transparent", height: "100%", padding: "0 8px", fontSize: "12px", outline: "none", width: "calc(100% - 20px)" }}
+        style={{ flexGrow: 1, border: "none", background: "transparent", width: "calc(100% - 20px)", padding: "4px 8px", fontSize: "12px", outline: "none", resize: "none", overflow: "hidden", minHeight: "26px" }}
         value={value || ""}
         placeholder={placeholder}
         disabled={disabled}
+        rows={1}
         onChange={(e) => onChange(e.target.value)}
       />
       
@@ -138,6 +139,10 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const pIdx = queryParams.get("pIdx"); // 獲取網址上的索引
+
+  // 全域欄位寬度記憶
+  const colStateRef = useRef(null);
+
   // 1. 狀態與初始值
   const initialHeader = {
     "Product Family": "", "Product": "", "Product ID": "", "Version": "",
@@ -255,6 +260,19 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     }
   };
 
+  // 寬度記憶邏輯
+  const onColumnResized = (params) => {
+    if (params.source === 'uiColumnDragged' && params.finished) {
+      colStateRef.current = params.api.getColumnState();
+    }
+  };
+
+  const onGridReady = (params) => {
+    if (colStateRef.current) {
+      params.api.applyColumnState({ state: colStateRef.current, applyOrder: true });
+    }
+  };
+
   // 4. 修改後的儲存邏輯 (直接覆蓋你原本的 handleSave)
   const handleSave = () => {
     const requiredFields = ["Product Family", "Product", "Product ID", "Version", "QR", "Sample Size", "Owner"];
@@ -340,13 +358,14 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       }
     },
     { 
-        headerName: "Condition", field: "condition", editable: true, width: 120,
-        cellStyle: { fontSize: "12px", fontWeight: "normal" } 
+        headerName: "Condition", field: "condition", editable: true, width: 140,
+        wrapText: true, autoHeight: true,
+        cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } 
     },
-    { headerName: "Program Name", field: "programName", editable: true, width: 130, cellStyle: { fontSize: "12px", fontWeight: "normal" } },
-    { headerName: "Test Program", field: "testProgram", editable: true, width: 120, cellStyle: { fontSize: "12px", fontWeight: "normal" } },
-    { headerName: "Test Script", field: "testScript", editable: true, width: 110, cellStyle: { fontSize: "12px", fontWeight: "normal" } },
-    { headerName: "Note", field: "note", editable: true, width: 150, cellStyle: { fontSize: "12px", fontWeight: "normal" } },
+    { headerName: "Program Name", field: "programName", editable: true, width: 130, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
+    { headerName: "Test Program", field: "testProgram", editable: true, width: 120, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
+    { headerName: "Test Script", field: "testScript", editable: true, width: 110, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
+    { headerName: "Note", field: "note", editable: true, width: 180, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "", width: 80, pinned: "right", cellRenderer: (p) => ( 
       <div className="d-flex gap-2 justify-content-center align-items-center h-100"> 
         <button className="grid-icon-btn copy-btn" title="Copy" onClick={() => duplicateRow(p.context.lotId, p.context.stressId, p.data)}>📋</button> 
@@ -377,7 +396,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                   {configMaster.products.filter((p) => p.familyId === header["Product Family"]).map((p) => <option key={p.id} value={p.productName}>{p.productName}</option>)}
                 </select>
               ) : k === "Remark" ? (
-                /* 優化 2: Remark 表面維持寬高，點擊開大彈窗 */
                 <div style={{ position: "relative" }}>
                   <input 
                     className="form-input-custom" 
@@ -450,12 +468,15 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                 <AgGridReact
                   rowData={s.rowData}
                   columnDefs={columnDefs}
-                  headerHeight={26} rowHeight={26} domLayout="autoHeight"
+                  headerHeight={30}
+                  domLayout="autoHeight"
                   rowDragManaged={true} animateRows={true}
                   context={{ lotId: lot.id, stressId: s.id }}
                   onRowDragEnd={(e) => onRowDragEnd(e, lot.id, s.id)}
+                  onGridReady={onGridReady}
+                  onColumnResized={onColumnResized}
                   getRowId={(p) => p.data?._rid}
-                  defaultColDef={{ resizable: true, sortable: true, singleClickEdit: true }}
+                  defaultColDef={{ resizable: true, sortable: true, singleClickEdit: true, wrapText: true, autoHeight: true }}
                 />
               </div>
               <button className="btn-add-step custom-btn-effect" style={{ marginTop: "4px", fontSize: "11px" }} onClick={() => addRow(lot.id, s.id)}>+ Add Step</button>
@@ -471,7 +492,16 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       <style>{`
         .form-select-custom, .form-input-custom { width: 100%; height: 28px; padding: 0 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; box-sizing: border-box; }
         .ag-theme-alpine .ag-row:hover { background-color: #f0f7ff !important; }
-        .ag-theme-alpine .ag-cell { padding: 0 !important; overflow: visible !important; display: flex; align-items: center; }
+        
+        /* 關鍵修正：讓內容換行且不凸出 */
+        .ag-theme-alpine .ag-cell { 
+          padding: 0 !important; 
+          overflow: visible !important; 
+          display: block !important; /* 從 flex 改回 block 以利自動換行 */
+          border-right: 1px solid #ebebeb !important;
+          word-break: break-word !important; 
+          white-space: normal !important;
+        }
 
         .custom-btn-effect, .btn-add-step, .btn-success-lg, .tpl-del-btn, .tpl-dropdown-trigger {
           transition: all 0.2s ease !important; cursor: pointer !important; outline: none !important; border: none;

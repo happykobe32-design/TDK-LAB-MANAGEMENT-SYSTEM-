@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom"; // 跳轉
 export default function RunCardListPage() {
   const navigate = useNavigate(); // 初始化 navigate
   const [allData, setAllData] = useState([]);
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
 
   //進階create跳轉（加入確認提示）
   const handleAdvancedEdit = (row) => {
@@ -380,13 +381,41 @@ export default function RunCardListPage() {
                 ))}
               </ul>
             </div>
-            <button className="action-button-custom btn-reset-red" onClick={handleReset}>⟳ Reset All</button>
+            <button className="action-button-custom btn-reset" onClick={handleReset}>⟳ Reset All</button>
             
-            {selectedIds.length > 0 && (
-              <button className="btn btn-danger btn-sm shadow-sm animate-fade-in" onClick={handleDeleteSelected}>
-                🗑️ Delete Selected ({selectedIds.length})
+            {/* --- 刪除模式控制開始 --- */}
+            {!isDeleteMode ? (
+              <button 
+                className="action-button-custom" 
+                style={{ borderColor: '#ef4444', color: '#ef4444' }}
+                onClick={() => setIsDeleteMode(true)}
+              >
+                🗑️ Delete 
               </button>
+            ) : (
+              <div className="d-flex gap-2 animate-fade-in">
+                <button 
+                  className="btn btn-danger btn-sm shadow-sm"
+                  disabled={selectedIds.length === 0}
+                  onClick={() => {
+                    handleDeleteSelected();
+                    setIsDeleteMode(false); // 刪除完自動退出模式
+                  }}
+                >
+                  Confirm Delete ({selectedIds.length})
+                </button>
+                <button 
+                  className="btn btn-secondary btn-sm shadow-sm"
+                  onClick={() => {
+                    setIsDeleteMode(false);
+                    setSelectedIds([]); // 取消時清空勾選
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
             )}
+            {/* --- 刪除模式控制結束 --- */}
           </div>
           <div className="small text-muted">Found <b className="text-dark">{totalItems}</b> items</div>
         </div>
@@ -397,7 +426,7 @@ export default function RunCardListPage() {
             <table className="table-fixed-layout">
               <thead>
                 <tr>
-                  <th className="text-center" style={{width:'40px'}}>
+                  <th className="text-center" style={{ width: '40px', display: !isDeleteMode ? 'none' : 'table-cell' }}>
                     <input type="checkbox" className="form-check-input" 
                       checked={selectedIds.length > 0 && selectedIds.length === filteredRows.length}
                       onChange={(e) => toggleSelectAll(e.target.checked)} />
@@ -456,7 +485,7 @@ export default function RunCardListPage() {
                 {currentTableData.map((r, i) => {
                   return (
                     <tr key={r.id} className="row-hover-effect">
-                      <td className="text-center">
+                      <td className="text-center" style={{ display: !isDeleteMode ? 'none' : 'table-cell' }}>
                         <input type="checkbox" className="form-check-input" 
                           checked={selectedIds.includes(r.id)}
                           onChange={() => toggleSelectRow(r.id)} />
@@ -467,6 +496,31 @@ export default function RunCardListPage() {
                         
                         if (col.key === "status") {
                           return <td key={col.key} className="text-center"><span className={`status-tag ${r.status.toLowerCase()}`}>{r.status}</span></td>;
+                        }
+                        
+                        // 2. 新增的 QR 跳轉邏輯 (含防呆)
+                        if (col.key === "qr") {
+                          return (
+                            <td key={col.key} className="text-center">
+                              <span 
+                                style={{ 
+                                  color: '#3b82f6', 
+                                  textDecoration: 'underline', 
+                                  fontWeight: 'bold',
+                                  cursor: 'pointer' 
+                                }}
+                                onClick={() => {
+                                  // 防呆提示
+                                  if (window.confirm(`Do you want to go to Check In/Out for QR: ${r.qr}?`)) {
+                                    // 跳轉並帶入專案索引 pIdx
+                                    navigate(`/checkinout?pIdx=${r.pIdx}`);
+                                  }
+                                }}
+                              >
+                                {r[col.key] || "(Empty QR)"}
+                              </span>
+                            </td>
+                          );
                         }
 
                         return (
@@ -520,13 +574,13 @@ export default function RunCardListPage() {
           .date-input-custom { border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; padding: 5px 8px; color: #475569; outline: none; background: #fff; }
 
           /* 欄位選擇與重設按鈕樣式 */
-          .action-button-custom { border: 1px solid #e2e8f0; background: #fff; padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+          .action-button-custom { border: 1px solid #f0e7e2ff; background: #fff; padding: 3px 5px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: 0.2s; }
           .action-button-custom:hover { background: #f1f5f9; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
           .btn-reset-red { color: #dc2626; border-color: #fee2e2; }
 
           /* 分頁按鈕樣式 (數字與左右箭頭) */
           .custom-pagination { display: flex; gap: 0px; }
-          .page-btn { border: 1px solid #e2e8f0; background: #fff; min-width: 32px; height: 32px; font-size: 12px; font-weight: 600; border-radius: 4px; transition: 0.2s; cursor: pointer; }
+          .page-btn { border: 1px solid #e2e8f0; background: #fff; min-width: 25px; height: 25px; font-size: 12px; font-weight: 600; border-radius: 4px; transition: 0.2s; cursor: pointer; }
           .page-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 
           /* 表格外部容器 (控制陰影與表格高度) */
