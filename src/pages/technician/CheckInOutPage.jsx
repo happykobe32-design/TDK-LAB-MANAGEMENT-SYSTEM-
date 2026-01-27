@@ -60,7 +60,6 @@ export default function CheckInOutPage() {
     [allProjects, selectedId]
   );
 
-  // 重要：防止編輯時畫面跳動的 key
   const getRowId = useCallback((params) => params.data._rid, []);
 
   const syncUpdate = useCallback(
@@ -91,7 +90,6 @@ export default function CheckInOutPage() {
           let newStatus = isAllDone ? "completed" : (isAnyStarted ? "in-process" : "Init");
           return { ...p, lots: updatedLots, status: newStatus };
         });
-        localStorage.setItem("all_projects", JSON.stringify(updated));
         return updated;
       });
     },
@@ -105,7 +103,7 @@ export default function CheckInOutPage() {
     return [
       {
         headerName: "STATUS",
-        width: 73,
+        width: 85,
         pinned: "left",
         valueGetter: (params) => {
           if (params.data.endTime === "SKIPPED") return "Skipped";
@@ -115,19 +113,31 @@ export default function CheckInOutPage() {
         },
         cellRenderer: (params) => {
           const status = params.value;
-          let color = "#525f71ff"; // Init 預設顏色 (灰色)
-          let bgColor = "transparent";
+          let color = "#64748b"; // Init (Slate 500)
+          let bgColor = "#f1f5f9"; 
+          
           if (status === "Skipped") {
-            color = "#cdccceff"; 
-            bgColor = "#f5f3ff"; 
+            color = "#94a3b8"; 
+            bgColor = "#f8fafc"; 
           } else if (status === "In-Process") {
-            color = "#f59e0b"; 
+            color = "#b45309"; // Dark Orange
+            bgColor = "#fef3c7"; 
           } else if (status === "Completed") {
-            color = "#10b981"; 
+            color = "#065f46"; // Dark Green
+            bgColor = "#d1fae5"; 
           }
+          
           return (
             <div style={{ display: "flex", alignItems: "center", height: "100%", justifyContent: "center" }}>
-              <span style={{ border: `1px solid ${color}`, color: color, padding: "0px 2px", borderRadius: "5px", fontSize: "10px", fontWeight: "bold" }}>
+              <span style={{ 
+                backgroundColor: bgColor, 
+                color: color, 
+                padding: "2px 6px", 
+                borderRadius: "12px", 
+                fontSize: "10px", 
+                fontWeight: "800",
+                lineHeight: "1"
+              }}>
                 {status.toUpperCase()}
               </span>
             </div>
@@ -145,7 +155,17 @@ export default function CheckInOutPage() {
         autoHeight: true,
         cellStyle: { lineHeight: "1.2", padding: "4px 2px" }
       },
-      { headerName: "Units/Q'ty", field: "qty", width: 79, editable: canEdit,cellStyle: (params) => ({ background: canEdit ? "#fff9c4" : "#fff", textAlign: 'center' }) },
+      { 
+        headerName: "Units/Q'ty", 
+        field: "qty", 
+        width: 79, 
+        editable: canEdit,
+        cellStyle: (params) => ({ 
+          background: canEdit ? "#fefce8" : "#fff", 
+          textAlign: 'center',
+          fontWeight: 'bold'
+        }) 
+      },
       { headerName: "Program Name", field: "programName", width: 120, wrapText: true, autoHeight: true },
       { headerName: "Test Program", field: "testProgram", width: 120, wrapText: true, autoHeight: true },
       { headerName: "Test Script", field: "testScript", width: 120, wrapText: true, autoHeight: true },
@@ -199,7 +219,7 @@ export default function CheckInOutPage() {
         field: "hardware", 
         width: 78, 
         editable: canEdit,
-        cellStyle: (params) => ({ background: canEdit ? "#fff9c4" : "#fff" }) 
+        cellStyle: (params) => ({ background: canEdit ? "#fefce8" : "#fff" }) 
       },
       { 
         headerName: "Note", 
@@ -208,23 +228,19 @@ export default function CheckInOutPage() {
         editable: canEdit,
         wrapText: true,
         autoHeight: true,
-        cellStyle: (params) => ({ background: canEdit ? "#fff9c4" : "#fff", lineHeight: '1.2' })
+        cellStyle: (params) => ({ background: canEdit ? "#fefce8" : "#fff", lineHeight: '1.2' })
       },
       {
         headerName: "",
-        width: 60,
+        width: 50,
         cellRenderer: (params) => {
           const rowIndex = params.node.rowIndex;
           const isThisStarted = !!params.data.startTime || !!params.data.endTime;
-          
-          // 判斷前一個步驟是否完全結束
           let isPrevFullyDone = true;
           if (rowIndex > 0) {
             const prevRow = params.api.getDisplayedRowAtIndex(rowIndex - 1);
             isPrevFullyDone = !!prevRow?.data?.endTime;
           }
-
-          // 只有在前一步已結束，且這步還沒開始時，才變紅色可點擊
           const canSkipNow = !isThisStarted && isPrevFullyDone;
 
           return (
@@ -262,13 +278,13 @@ export default function CheckInOutPage() {
     ];
 
     return (
-      <div style={{ display: "flex", width: "100%", border: "2px solid #000", background: "#fff" }}>
+      <div style={{ display: "flex", width: "100%", border: "1px solid #334155", background: "#fff", marginBottom: "4px", borderRadius: "4px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
         {order.map((item, i) => (
-          <div key={i} style={{ flex: 1, borderRight: i === order.length - 1 ? "none" : "1px solid #000" }}>
-            <div style={{ fontSize: "9px", background: "#334155", color: "#fff", padding: "2px 4px", fontWeight: "bold", textAlign: "center", borderBottom: "1px solid #000" }}>
+          <div key={i} style={{ flex: 1, borderRight: i === order.length - 1 ? "none" : "1px solid #e2e8f0" }}>
+            <div style={{ fontSize: "9px", background: "#334155", color: "#fff", padding: "4px 2px", fontWeight: "bold", textAlign: "center", textTransform: "uppercase" }}>
               {item.label}
             </div>
-            <div style={{ fontSize: "12px", color: "#000", padding: "4px", fontWeight: "bold", textAlign: "center", minHeight: "22px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ fontSize: "12px", color: "#1e293b", padding: "6px 4px", fontWeight: "bold", textAlign: "center", minHeight: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
               {getDisplayName("Product Family", h[item.key])}
             </div>
           </div>
@@ -278,25 +294,26 @@ export default function CheckInOutPage() {
   };
 
   return (
-    <div style={{ padding: "0px", background: "#fff", minHeight: "100vh", fontFamily: "Arial, sans-serif" }}>
+    <div style={{ padding: "10px", background: "#f8fafc", minHeight: "100vh", fontFamily: "Segoe UI, Roboto, sans-serif" }}>
       {!currentProject ? (
         <div style={{ padding: "50px", textAlign: "center", color: "#94a3b8" }}>No Project Selected</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0px", maxWidth: "1400px", margin: "0 auto" }}>
           
           {renderHeaderExcel()}
 
-          <div style={{ display: "flex", gap: "2px", background: "#ffffffff", padding: "1px 4px 0 0px", }}>
+          <div style={{ display: "flex", gap: "2px", paddingLeft: "0px" }}>
             {currentProject.lots.map((lot, idx) => (
               <div 
                 key={lot.id} 
                 onClick={() => setActiveLotTab(idx)}
                 style={{
                   padding: "4px 8px", cursor: "pointer", fontSize: "11px", fontWeight: "bold",
-                  background: activeLotTab === idx ? "#fff" : "#cbd5e1",
-                  color: activeLotTab === idx ? "#000" : "#64748b",
-                  border: "1px solid #979494ff", borderBottom: activeLotTab === idx ? "none" : "1px solid #000",
-                  borderRadius: "3px 3px 0 0", zIndex: activeLotTab === idx ? 10 : 1
+                  background: activeLotTab === idx ? "#fff" : "#e2e8f0",
+                  color: activeLotTab === idx ? "#2563eb" : "#64748b",
+                  border: "1px solid #cbd5e1", borderBottom: activeLotTab === idx ? "2px solid #fff" : "1px solid #cbd5e1",
+                  borderRadius: "6px 6px 0 0", zIndex: activeLotTab === idx ? 10 : 1,
+                  marginBottom: "-1px", transition: "all 0.2s"
                 }}
               >
                 LOT: {lot.lotId}
@@ -304,15 +321,15 @@ export default function CheckInOutPage() {
             ))}
           </div>
 
-          <div style={{ background: "#fff", borderTop: 'none' }}>
+          <div style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: "0 4px 4px 4px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }}>
             {activeLot && activeLot.stresses.map((s, sIdx) => (
-              <div key={s.id} className="ag-theme-alpine custom-grid" style={{ width: "100%", borderBottom: sIdx === activeLot.stresses.length - 1 ? 'none' : '6px solid #334155' }}>
+              <div key={s.id} className="ag-theme-alpine custom-grid" style={{ width: "100%", borderBottom: sIdx === activeLot.stresses.length - 1 ? 'none' : '4px solid #f1f5f9' }}>
                 <AgGridReact
                   rowData={s.rowData}
                   columnDefs={columnDefs}
                   context={{ lotId: activeLot.id, stressId: s.id }}
                   headerHeight={25}
-                  rowHeight={30}
+                  rowHeight={32}
                   domLayout="autoHeight"
                   getRowId={getRowId}
                   defaultColDef={{ sortable: false, resizable: true, suppressMovable: true }}
@@ -321,26 +338,68 @@ export default function CheckInOutPage() {
               </div>
             ))}
           </div>
-        </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '20px 0' }}>
+            <button 
+              onClick={() => {
+                if (window.confirm("Are you sure you want to save?")) {
+                  localStorage.setItem("all_projects", JSON.stringify(allProjects));
+                  alert("Data has been saved!");
+                }
+              }}
+              style={{
+                padding: '5px 30px', backgroundColor: '#0f172a', color: '#fff',
+                border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer',
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', transition: 'transform 0.1s'
+              }}
+            >
+              SAVE 
+            </button>
+          </div>
+        </div> 
       )}
 
       <style>{`
-        .custom-grid .ag-header { background-color: #334155 !important; }
-        .custom-grid .ag-header-cell-label { color: #fffffffb !important; font-size: 11px; font-weight: bold; justify-content: center; }
-        .custom-grid .ag-cell { font-size: 11px; border-right: 1px solid #000 !important; display: flex; align-items: center; padding: 2px 2px !important; }
-        .custom-grid .ag-row { border-bottom: 1px solid #000 !important; }
-        .stress-column-border { border-right: 2px solid #000 !important; }
+        .custom-grid { 
+          box-sizing: border-box;
+        }
+        .custom-grid .ag-header { 
+          background-color: #334155 !important; 
+          border-bottom: 1px solid #1e293b !important;
+        }
+        .custom-grid .ag-header-cell-label { 
+          color: #ffffff !important; 
+          font-size: 11px; 
+          font-weight: 700; 
+          justify-content: center; 
+          letter-spacing: 0.05em;
+        }
+        /*表格線*/  
+        .custom-grid .ag-cell { 
+          font-size: 11px; 
+          border-right: 1px solid #b5b9bcff !important; 
+          display: flex; 
+          align-items: center; 
+          color: #334155;
+        }
+        .custom-grid .ag-row { border-bottom: 1px solid #b5b9bcff !important; }
         
-        .op-button { width: 100%; height: 24px; border: none; border-radius: 3px; font-weight: bold; font-size: 10px; cursor: pointer; }
-        .op-button.start { background: #2563eb; color: #fff; }
-        .op-button.finish { background: #059669; color: #fff; }
-        .op-button.done { background: #f1f5f9; color: #94a3b8; border: 1px solid #cbd5e1; cursor: default; }
-        .op-button.waiting { background: #f8fafc; color: #cbd5e1; cursor: not-allowed; }
+        .op-button { 
+          width: 100%; height: 28px; border: none; border-radius: 4px; 
+          font-weight: 800; font-size: 10px; cursor: pointer; transition: all 0.2s;
+        }
+        .op-button.start { background: #2563eb; color: #fff; box-shadow: 0 2px 4px rgba(37,99,235,0.2); }
+        .op-button.start:hover { background: #1d4ed8; }
         
-        .skip-btn { width: 100%; height: 20px; font-size: 9px; font-weight: bold; cursor: pointer; border-radius: 2px; border: 1px solid #d1d5db; transition: all 0.2s; }
-        .skip-active { color: #ef4444; border-color: #ef4444; background: #fff; }
-        .skip-active:hover { background: #fee2e2; }
-        .skip-disabled { color: #cbd5e1; background: #f3f4f6; cursor: not-allowed; border-color: #e5e7eb; }
+        .op-button.finish { background: #059669; color: #fff; box-shadow: 0 2px 4px rgba(5,150,105,0.2); }
+        .op-button.finish:hover { background: #047857; }
+        
+        .op-button.done { background: transparent; color: #94a3b8; border: 1px solid #e2e8f0; cursor: default; }
+        .op-button.waiting { background: transparent; color: #cbd5e1; border: 1px dashed #e2e8f0; cursor: not-allowed; }
+        
+        .skip-btn { width: 100%; height: 22px; font-size: 9px; font-weight: bold; cursor: pointer; border-radius: 4px; border: 1px solid #e2e8f0; transition: all 0.2s; }
+        .skip-active { color: #ef4444; border-color: #fecaca; background: #fff5f5; }
+        .skip-active:hover { background: #fee2e2; border-color: #ef4444; }
+        .skip-disabled { color: #e2e8f0; background: transparent; cursor: not-allowed; border-color: #f1f5f9; }
       `}</style>
     </div>
   );

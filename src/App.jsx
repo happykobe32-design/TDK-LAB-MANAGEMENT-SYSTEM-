@@ -2,13 +2,17 @@ import { useState, useEffect, useRef } from "react";
 // 引入 React Router 相關組件
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import 'bootstrap/dist/css/bootstrap.min.css';
-import 'bootstrap/dist/js/bootstrap.bundle.min'; // 這是下拉選單或彈窗必備的 JS
+import 'bootstrap/dist/js/bootstrap.bundle.min'; 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
+import logoImg from "./assets/company-logo.png";
+// === 引入外部翻譯設定 ===
+import "./i18n"; 
+import { useTranslation } from "react-i18next";
 // 頁面組件導入
 import PermissionMaintenancePage from "./pages/admin/PermissionMaintenancePage";
 import ConfigurationMaintenancePage from "./pages/admin/ConfigurationMaintenancePage";
-import StressConfigPage from "./pages/admin/StressConfigPage"; // 新增的獨立設定頁
+import StressConfigPage from "./pages/admin/StressConfigPage"; 
 import RunCardListPage from "./pages/shared/RunCardListPage";
 import RunCardEditPage from "./pages/shared/RunCardEditPage";
 import RunCardFormPage from "./pages/engineer/RunCardCreatePage";
@@ -31,19 +35,15 @@ const STATUS = {
 };
 
 function AppContent() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const location = useLocation(); // 取得當前路徑
+  const location = useLocation(); 
   
-  // 從 sessionStorage 讀取登入狀態
   const [user, setUser] = useState(() => sessionStorage.getItem("logged_user"));
   const [userRole, setUserRole] = useState(() => sessionStorage.getItem("logged_role"));
 
-  const [loginData, setLoginData] = useState({
-    username: "",
-    password: "",
-  });
+  const [loginData, setLoginData] = useState({ username: "", password: "" });
 
-  // RunCard 資料庫存取
   const [runCards, setRunCards] = useState(() => {
     const saved = localStorage.getItem("runCards_db");
     return saved ? JSON.parse(saved) : [];
@@ -71,10 +71,8 @@ function AppContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 判定是否為當前頁面（用於側邊欄高亮）
   const isActive = (path) => location.pathname === path;
 
-  // 登入邏輯
   const handleLogin = () => {
     const { username, password } = loginData;
     if (password !== "1234") return alert("密碼錯誤");
@@ -105,7 +103,6 @@ function AppContent() {
     setSidebarOpen(false);
   };
 
-  // 登出邏輯
   const handleLogout = () => {
     setUser(null);
     setUserRole(null);
@@ -116,14 +113,12 @@ function AppContent() {
     setSidebarOpen(false);
   };
 
-  // 產生序號 (YYYYMMDD-XXX)
   const generateSerialId = () => {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const count = runCards.filter((rc) => rc.id.startsWith(today)).length + 1;
     return `${today}-${String(count).padStart(3, "0")}`;
   };
 
-  // 新增 RunCard
   const handleFinalSubmit = (runCardData) => {
     if (userRole === ROLES.TECHNICIAN) return alert("技術員無權限新增");
     const newCard = {
@@ -138,7 +133,6 @@ function AppContent() {
     setRunCards((prev) => [...prev, newCard]);
   };
 
-  // 刪除 RunCard
   const handleDelete = (id) => {
     if (userRole === ROLES.TECHNICIAN) return alert("技術員無權限");
     if (userRole === ROLES.ADMIN) {
@@ -191,36 +185,45 @@ function AppContent() {
     );
   };
 
-  // 未登入介面
+  const changeLanguage = (lng) => { i18n.changeLanguage(lng); };
+
+  const langButtonStyle = (lang) => ({
+    color: i18n.language.startsWith(lang) ? "#ffffff" : "rgba(255,255,255,0.5)",
+    fontWeight: i18n.language.startsWith(lang) ? "bold" : "normal",
+    padding: "4px 8px",
+    borderRadius: "4px",
+    transition: "background 0.2s",
+    textDecoration: "none",
+    background: "transparent",
+    border: "none",
+    fontSize: "0.85rem"
+  });
+
   if (!user) {
     return (
       <div className="page page-center">
         <div className="container container-tight py-4">
           <div className="text-center mb-4">
-            <h1 className="fw-bold mb-1">LAB MANAGEMENT SYSTEM</h1>
+            <h1 className="fw-bold mb-1">{t("SYSTEM_TITLE")}</h1>
+            <div className="mt-2">
+              <button className="btn btn-sm btn-ghost-primary" onClick={() => changeLanguage('en')}>EN</button>
+              <span className="mx-1 text-muted">|</span>
+              <button className="btn btn-sm btn-ghost-primary" onClick={() => changeLanguage('zh')}>中文</button>
+            </div>
           </div>
           <div className="card card-md shadow-sm">
             <div className="card-body">
-              <h2 className="h3 text-center mb-4">Log in</h2>
+              <h2 className="h3 text-center mb-4">{t("LOGIN")}</h2>
               <div className="mb-3">
-                <label className="form-label">User ID (admin / engineer / technician)</label>
-                <input
-                  className="form-control"
-                  value={loginData.username}
-                  onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
-                />
+                <label className="form-label">{t("USER_ID")}</label>
+                <input className="form-control" value={loginData.username} onChange={(e) => setLoginData({ ...loginData, username: e.target.value })} />
               </div>
               <div className="mb-3">
-                <label className="form-label">Password</label>
-                <input
-                  type="password"
-                  className="form-control"
-                  value={loginData.password}
-                  onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                />
+                <label className="form-label">{t("PASSWORD")}</label>
+                <input type="password" className="form-control" value={loginData.password} onChange={(e) => setLoginData({ ...loginData, password: e.target.value })} />
               </div>
-              <button className="btn btn-primary w-100" onClick={handleLogin}>Login</button>
-              <div className="text-muted text-center mt-3 small">預設密碼：1234</div>
+              <button className="btn btn-primary w-100" onClick={handleLogin}>{t("LOGIN")}</button>
+              <div className="text-muted text-center mt-3 small">{t("PW_HINT")}</div>
             </div>
           </div>
         </div>
@@ -232,7 +235,6 @@ function AppContent() {
   const isEngineer = userRole === ROLES.ENGINEER;
   const isTechnician = userRole === ROLES.TECHNICIAN;
 
-  // 選單項目通用樣式
   const navItemStyle = (path) => ({
     borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
     backgroundColor: isActive(path) ? "rgba(0, 0, 0, 0.25)" : "transparent",
@@ -241,159 +243,163 @@ function AppContent() {
   });
 
   return (
-    <div className={`page ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
-      {/* 側邊導覽列 */}
-      <aside
-        className={`navbar navbar-vertical navbar-expand-lg ${sidebarOpen ? "show" : "d-none"}`}
-        data-bs-theme="dark"
-        style={{
-          width: 260,
-          position: "fixed",
-          zIndex: 1050,
-          height: "100vh",
-          backgroundColor: "#1e3a8a", 
-          borderRight: "1px solid rgba(255, 255, 255, 0.15)",
-        }}
-      >
-        <div className="container-fluid px-0">
-          <div className="px-4 py-4 border-bottom" style={{ borderColor: "rgba(255, 255, 255, 0.2) !important" }}>
-            <h1 className="navbar-brand fw-bold m-0 d-flex align-items-center gap-2" style={{ color: "#ffffff", fontSize: "1.2rem", letterSpacing: "1px" }}>
-              <span>⚙️</span> SYSTEM MENU
-            </h1>
-          </div>
-          <ul className="navbar-nav px-0">
-            {isAdmin && (
-              <li className="nav-item" style={navItemStyle("/permission")}>
-                <button
-                  className={`nav-link btn w-100 text-start px-4 py-3 ${isActive("/permission") ? "active fw-bold text-white" : ""}`}
-                  onClick={() => { navigate("/permission"); setSidebarOpen(false); }}
-                >
-                  🔐 Permission Maintenance
-                </button>
-              </li>
-            )}
+    <div className="page" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", margin: 0, padding: 0 }}>
+      <style>{`
+        .lang-btn:hover { background: rgba(255, 255, 255, 0.1) !important; color: #fff !important; }
+        .nav-link:hover { background: rgba(0, 0, 0, 0.1); }
+        /* 核心修正：強制移除標題欄與內容區的所有外距 */
+        .page-header { margin-bottom: 0 !important; }
+        .page-body { margin-top: 0 !important; }
+      `}</style>
 
-            {isAdmin && (
-              <li className="nav-item">
-                <div style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.15)" }}>
-                  <button
-                    className="nav-link btn w-100 text-start px-4 py-3 d-flex align-items-center"
-                    onClick={() => setConfigSubMenuOpen(!configSubMenuOpen)}
-                  >
-                    <span className="flex-grow-1">🛠️ Configuration Maintenance</span>
-                    <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>
-                      {configSubMenuOpen ? "▼" : "▶"}
-                    </span>
+      {/* 獨立頂欄 */}
+      <header className="page-header" style={{ 
+        background: "#1e3a8a", 
+        padding: "10px 20px", 
+        color: "#ffffff", 
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)", 
+        zIndex: 1100, 
+        flexShrink: 0, 
+        margin: 0 
+      }}>
+        <div className="d-flex align-items-center w-100">
+          <button className="navbar-toggler me-3 d-block" onClick={() => setSidebarOpen((v) => !v)}>☰</button>
+          <div className="d-flex align-items-center" style={{ marginLeft: "-10px" }}> 
+            <img src={logoImg} alt="Logo" style={{ height: "22px", width: "auto", marginRight: "10px" }} />
+            <h2 className="page-title" style={{ margin: 0, color: "#ffffff", fontWeight: "600", letterSpacing: "1px", fontSize: "1.2rem" }}>
+              {t("SYSTEM_TITLE")}
+            </h2>
+          </div>
+          
+          <div className="ms-auto d-flex align-items-center gap-1 me-3">
+            <button className="lang-btn" style={langButtonStyle('en')} onClick={() => changeLanguage('en')}>EN</button>
+            <span className="text-white-50 small">|</span>
+            <button className="lang-btn" style={langButtonStyle('zh')} onClick={() => changeLanguage('zh')}>中文</button>
+          </div>
+
+          <div className="position-relative" ref={userMenuRef}>
+            <button className="btn btn-link d-flex align-items-center text-decoration-none p-0" style={{ color: "#ffffff" }} onClick={() => setUserMenuOpen(!userMenuOpen)}>
+              <span className="avatar avatar-sm bg-blue-lt me-2" style={{ border: "1px solid #fff" }}>{user?.charAt(0)}</span>
+              <div className="text-start d-none d-md-block">
+                <div className="fw-bold small" style={{ lineHeight: "1.2" }}>{user}</div>
+                <div style={{ fontSize: "10px", color: "#cbd5e1" }}>{userRole?.toUpperCase()}</div>
+              </div>
+            </button>
+            {userMenuOpen && (
+              <div className="dropdown-menu dropdown-menu-end show shadow" style={{ position: "absolute", right: 0, marginTop: "8px" }}>
+                <button className="dropdown-item text-danger" onClick={handleLogout}>{t("LOGOUT")}</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* 下方主要區域 */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", marginTop: 0 }}>
+        
+        {/* 側邊欄 */}
+        <aside
+          className={`navbar navbar-vertical navbar-expand-lg ${sidebarOpen ? "show" : "d-none"}`}
+          data-bs-theme="dark"
+          style={{
+            width: 270,
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 1050,
+            backgroundColor: "#1e3a8a", 
+            borderRight: "1px solid rgba(255, 255, 255, 0.15)",
+            margin: 0
+          }}
+        >
+          <div className="container-fluid px-0">
+            <div className="px-0 py-2 border-bottom" style={{ borderColor: "rgba(255, 255, 255, 0.2)" }}>
+              <h1 className="navbar-brand fw-bold m-0 d-flex align-items-center gap-2" style={{ color: "#ffffff", fontSize: "1.2rem", letterSpacing: "0px" }}>
+                <span>⚙️</span> {t("MENU_MAIN")}
+              </h1>
+            </div>
+            <ul className="navbar-nav px-0">
+              {isAdmin && (
+                <li className="nav-item" style={navItemStyle("/permission")}>
+                  <button className={`nav-link btn w-100 text-start px-4 py-3 m-0 ${isActive("/permission") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/permission"); setSidebarOpen(false); }}>
+                    🔐 {t("NAV_PERMISSION")}
                   </button>
-                </div>
-                {/* 子選單：Product Family & Stress Settings */}
-                {configSubMenuOpen && (
-                  <ul className="list-unstyled mb-0">
-                    <li style={navItemStyle("/config")}>
-                      <button
-                        className={`nav-link btn w-100 text-start px-5 py-2 ${isActive("/config") ? "active fw-bold text-white" : ""}`}
-                        onClick={() => { navigate("/config"); setSidebarOpen(false); }}
-                      >
-                        <span className="me-2">•</span> Product Family
-                      </button>
-                    </li>
-                    <li style={navItemStyle("/stress-config")}>
-                      <button
-                        className={`nav-link btn w-100 text-start px-5 py-2 ${isActive("/stress-config") ? "active fw-bold text-white" : ""}`}
-                        onClick={() => { navigate("/stress-config"); setSidebarOpen(false); }}
-                      >
-                        <span className="me-2">•</span> Test Settings
-                      </button>
-                    </li>
-                  </ul>
-                )}
-              </li>
-            )}
-
-            {(isAdmin || isEngineer) && (
-              <li className="nav-item" style={navItemStyle("/list")}>
-                <button
-                  className={`nav-link btn w-100 text-start px-4 py-3 ${isActive("/list") ? "active fw-bold text-white" : ""}`}
-                  onClick={() => { navigate("/list"); setSidebarOpen(false); }}
-                >
-                  🔍 Project View / Search
-                </button>
-              </li>
-            )}
-            {(isAdmin || isEngineer) && (
-              <li className="nav-item" style={navItemStyle("/create")}>
-                <button
-                  className={`nav-link btn w-100 text-start px-4 py-3 ${isActive("/create") ? "active fw-bold text-white" : ""}`}
-                  onClick={() => { navigate("/create"); setSidebarOpen(false); }}
-                >
-                  ➕ Create Project
-                </button>
-              </li>
-            )}
-            {(isAdmin || isTechnician) && (
-              <li className="nav-item" style={navItemStyle("/checkinout")}>
-                <button
-                  className={`nav-link btn w-100 text-start px-4 py-3 ${isActive("/checkinout") ? "active fw-bold text-white" : ""}`}
-                  onClick={() => { navigate("/checkinout"); setSidebarOpen(false); }}
-                >
-                  ⏱️ Check In / Out
-                </button>
-              </li>
-            )}
-          </ul>
-        </div>
-      </aside>
-
-      {/* 主要內容區域 */}
-      <div
-        className="page-wrapper"
-        style={{
-          marginLeft: sidebarOpen ? 260 : 0,
-          transition: "margin 0.3s",
-        }}
-      >
-        <div className="page-header" style={{ background: "#1e3a8a", padding: "12px 20px", color: "#ffffff", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", margin: 0 }}>
-          <div className="d-flex align-items-center">
-            <button className="navbar-toggler me-3 d-block" onClick={() => setSidebarOpen((v) => !v)}>☰</button>
-            <div>
-              <h2 className="page-title" style={{ margin: 0, color: "#ffffff", fontWeight: "700", letterSpacing: "1px", fontSize: "1.25rem" }}>
-                LAB MANAGEMENT SYSTEM
-              </h2>
-            </div>
-            <div className="ms-auto position-relative" ref={userMenuRef}>
-              <button className="btn btn-link d-flex align-items-center text-decoration-none" style={{ color: "#ffffff", padding: 0 }} onClick={() => setUserMenuOpen(!userMenuOpen)}>
-                <span className="avatar avatar-sm bg-blue-lt me-2" style={{ border: "1px solid #fff" }}>{user?.charAt(0)}</span>
-                <div className="text-start d-none d-md-block">
-                  <div className="fw-bold small" style={{ lineHeight: "1.2" }}>{user}</div>
-                  <div style={{ fontSize: "10px", color: "#cbd5e1" }}>{userRole?.toUpperCase()}</div>
-                </div>
-              </button>
-              {userMenuOpen && (
-                <div className="dropdown-menu dropdown-menu-end show shadow" style={{ position: "absolute", right: 0, marginTop: "8px" }}>
-                  <button className="dropdown-item text-danger" onClick={handleLogout}>Logout</button>
-                </div>
+                </li>
               )}
-            </div>
+              {isAdmin && (
+                <li className="nav-item">
+                  <div style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.15)" }}>
+                    <button className="nav-link btn w-100 text-start px-4 py-3 m-0 d-flex align-items-center" onClick={() => setConfigSubMenuOpen(!configSubMenuOpen)}>
+                      <span className="flex-grow-1">🛠️ {t("NAV_CONFIG")}</span>
+                      <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>{configSubMenuOpen ? "▼" : "▶"}</span>
+                    </button>
+                  </div>
+                  {configSubMenuOpen && (
+                    <ul className="list-unstyled mb-0">
+                      <li style={navItemStyle("/config")}>
+                        <button className={`nav-link btn w-100 text-start px-5 py-2 m-0 ${isActive("/config") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/config"); setSidebarOpen(false); }}>
+                          <span className="me-2">•</span> {t("NAV_PROD_FAMILY")}
+                        </button>
+                      </li>
+                      <li style={navItemStyle("/stress-config")}>
+                        <button className={`nav-link btn w-100 text-start px-5 py-2 m-0 ${isActive("/stress-config") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/stress-config"); setSidebarOpen(false); }}>
+                          <span className="me-2">•</span> {t("NAV_TEST_SET")}
+                        </button>
+                      </li>
+                    </ul>
+                  )}
+                </li>
+              )}
+              {(isAdmin || isEngineer) && (
+                <li className="nav-item" style={navItemStyle("/list")}>
+                  <button className={`nav-link btn w-100 text-start px-4 py-3 m-0 ${isActive("/list") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/list"); setSidebarOpen(false); }}>
+                    🔍 {t("NAV_VIEW")}
+                  </button>
+                </li>
+              )}
+              {(isAdmin || isEngineer) && (
+                <li className="nav-item" style={navItemStyle("/create")}>
+                  <button className={`nav-link btn w-100 text-start px-4 py-3 m-0 ${isActive("/create") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/create"); setSidebarOpen(false); }}>
+                    ➕ {t("NAV_CREATE")}
+                  </button>
+                </li>
+              )}
+              {(isAdmin || isTechnician) && (
+                <li className="nav-item" style={navItemStyle("/checkinout")}>
+                  <button className={`nav-link btn w-100 text-start px-4 py-3 m-0 ${isActive("/checkinout") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/checkinout"); setSidebarOpen(false); }}>
+                    ⏱️ {t("NAV_CHECK")}
+                  </button>
+                </li>
+              )}
+            </ul>
           </div>
-        </div>
+        </aside>
 
-        <div className="page-body" style={{ padding: 0, margin: 0 }}>
+        {/* 分頁內容區 */}
+        <main
+          className="page-body"
+          style={{
+            flex: 1,
+            marginLeft: sidebarOpen ? 270 : 0,
+            transition: "margin-left 0.3s ease",
+            overflowY: "auto",
+            backgroundColor: "#f8fafc",
+            padding: 0,
+            margin: 0
+          }}
+        >
           <Routes>
-            {/* 管理員專用 */}
-            <Route path="/permission" element={isAdmin ? (<PageLayout title="Permission Maintenance" icon="🔐"><PermissionMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/config" element={isAdmin ? (<PageLayout title="Configuration Maintenance" icon="🛠️"><ConfigurationMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/stress-config" element={isAdmin ? (<PageLayout title="Configuration Maintenance" icon="🛠️"><StressConfigPage /></PageLayout>) : <Navigate to="/list" />} />
-            
-            {/* 共用與角色路由 */}
-            <Route path="/list" element={(isAdmin || isEngineer) ? (<PageLayout title="Project View / Search" icon="🔍"><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
-            <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title="Create Project" icon="➕"><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/edit" element={(<PageLayout title="Edit Project" icon="✏️"><RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} /></PageLayout>)} />
-            <Route path="/checkinout" element={(isAdmin || isTechnician) ? (<PageLayout title="Check In / Out" icon="⏱️"><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
-            
-            {/* 預設路由 */}
+            <Route path="/permission" element={isAdmin ? (<PageLayout title={t("NAV_PERMISSION")} icon="🔐"><PermissionMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/config" element={isAdmin ? (<PageLayout title={t("NAV_CONFIG")} icon="🛠️"><ConfigurationMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/stress-config" element={isAdmin ? (<PageLayout title={t("NAV_CONFIG")} icon="🛠️"><StressConfigPage /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/list" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_VIEW")} icon="🔍"><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
+            <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_CREATE")} icon="➕"><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/edit" element={(<PageLayout title={t("EDIT_PROJ")} icon="✏️"><RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} /></PageLayout>)} />
+            <Route path="/checkinout" element={(isAdmin || isTechnician) ? (<PageLayout title={t("NAV_CHECK")} icon="⏱️"><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/" element={<Navigate to={isAdmin ? "/permission" : (isEngineer ? "/create" : "/checkinout")} />} />
           </Routes>
-        </div>
+        </main>
       </div>
     </div>
   );
