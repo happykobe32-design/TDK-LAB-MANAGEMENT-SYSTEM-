@@ -6,7 +6,7 @@ import { ModuleRegistry } from "ag-grid-community";
 import { AllCommunityModule } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
-import "../../assets/RunCardCreatePage.css";
+import "../../pages/engineer/RunCardCreatePage.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -53,30 +53,56 @@ const EditableDropdown = ({ value, options, onChange, placeholder, disabled }) =
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
   const containerRef = useRef(null);
 
-  const toggleDropdown = () => {
-    if (disabled) return;
-    if (!isOpen && containerRef.current) {
+  // 1. 核心邏輯：計算並更新位置
+  const updatePosition = useCallback(() => {
+    if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       setCoords({
+        // 使用 getBoundingClientRect 配合 window.scrollY 確保絕對定位精準
         top: rect.bottom + window.scrollY,
         left: rect.left + window.scrollX,
         width: Math.max(rect.width, 160)
       });
     }
-    setIsOpen(!isOpen);
-  };
+  }, []);
 
+  // 2. 監聽滾動與點擊
   useEffect(() => {
+    const handleScrollAndResize = () => {
+      if (isOpen) {
+        updatePosition(); // 滾動時實時更新選單位置
+      }
+    };
+
     const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target) && !e.target.closest(".portal-dropdown-panel")) {
+      if (
+        containerRef.current && 
+        !containerRef.current.contains(e.target) && 
+        !e.target.closest(".portal-dropdown-panel")
+      ) {
         setIsOpen(false);
       }
     };
+
     if (isOpen) {
+      // 監聽全域滾動，使用 capture: true 捕捉 AG Grid 內部的滾動
+      window.addEventListener("scroll", handleScrollAndResize, true);
+      window.addEventListener("resize", handleScrollAndResize);
       document.addEventListener("mousedown", handleClickOutside);
     }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
+
+    return () => {
+      window.removeEventListener("scroll", handleScrollAndResize, true);
+      window.removeEventListener("resize", handleScrollAndResize);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen, updatePosition]);
+
+  const toggleDropdown = () => {
+    if (disabled) return;
+    if (!isOpen) updatePosition();
+    setIsOpen(!isOpen);
+  };
 
   return (
     <div ref={containerRef} className="editable-dropdown-container" style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", position: "relative" }}>
@@ -110,19 +136,23 @@ const EditableDropdown = ({ value, options, onChange, placeholder, disabled }) =
             width: coords.width,
             background: "#fff", 
             border: "1px solid #ccc", 
-            zIndex: 9999, 
+            zIndex: 100000, 
             boxShadow: "0 4px 12px rgba(0,0,0,0.15)", 
             borderRadius: "2px",
             maxHeight: "200px",
-            overflowY: "auto"
+            overflowY: "auto",
+            pointerEvents: "auto" // 確保可以點擊
           }}
         >
           {options.map((opt) => (
             <div 
               key={opt} 
               className="dropdown-opt-item" 
-              onClick={() => { onChange(opt); setIsOpen(false); }}
-              style={{ padding: "6px 10px", cursor: "pointer", fontSize: "12px", borderBottom: "1px solid #f9f9f9" }}
+              onClick={() => { 
+                onChange(opt); 
+                setIsOpen(false); 
+              }}
+              style={{ padding: "8px 10px", cursor: "pointer", fontSize: "12px", borderBottom: "1px solid #f9f9f9" }}
             >
               {opt}
             </div>

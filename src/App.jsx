@@ -15,21 +15,19 @@ import {
   Search, 
   PlusCircle, 
   ClipboardCheck, 
-  FileEdit,
   ChevronRight,
   ChevronDown,
   Menu // 引入專業選單圖示
 } from 'lucide-react';
 
 // === 引入外部翻譯設定 ===
-import "./i18n"; 
+import "./constants/i18n"; 
 import { useTranslation } from "react-i18next";
 // 頁面組件導入
 import PermissionMaintenancePage from "./pages/admin/PermissionMaintenancePage";
 import ConfigurationMaintenancePage from "./pages/admin/ConfigurationMaintenancePage";
 import StressConfigPage from "./pages/admin/StressConfigPage"; 
 import RunCardListPage from "./pages/shared/RunCardListPage";
-import RunCardEditPage from "./pages/shared/RunCardEditPage";
 import RunCardFormPage from "./pages/engineer/RunCardCreatePage";
 import CheckInOutPage from "./pages/technician/CheckInOutPage";
 import PageLayout from "./components/PageLayout";
@@ -462,7 +460,6 @@ function AppContent() {
             <Route path="/stress-config" element={isAdmin ? (<PageLayout title={t("NAV_CONFIG")} icon={<Settings size={20} />}><StressConfigPage /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/list" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_VIEW")} icon={<Search size={20} />}><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
             <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_CREATE")} icon={<PlusCircle size={20} />}><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/edit" element={(<PageLayout title={t("EDIT_PROJ")} icon={<FileEdit size={20} />}><RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} /></PageLayout>)} />
             <Route path="/checkinout" element={(isAdmin || isTechnician) ? (<PageLayout title={t("NAV_CHECK")} icon={<ClipboardCheck size={20} />}><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/" element={<Navigate to={isAdmin ? "/permission" : (isEngineer ? "/create" : "/checkinout")} />} />
           </Routes>
