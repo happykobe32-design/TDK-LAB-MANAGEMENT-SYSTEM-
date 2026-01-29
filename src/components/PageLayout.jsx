@@ -49,7 +49,7 @@ export default function PageLayout({ title, icon, children }) {
         style={{ 
           flex: 1, 
           backgroundColor: "#ffffffff", 
-          padding: "0px",        // 關鍵 1: 將 24px 改為 0px，移除四周空隙
+          padding: "0px",        // 調整滿版
           margin: 0,
           width: "100%",
           boxSizing: "border-box",

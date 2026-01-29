@@ -1,165 +1,126 @@
 import React, { useState } from 'react';
+import { Trash2, Plus, Save, Settings, ChevronRight, FileText } from 'lucide-react';
 
 const StressConfigPage = () => {
-  // 1. 模擬資料庫資料 (包含四層架構)
   const [data, setData] = useState([
     {
-      id: "S1", name: "Environmental Test",
-      types: [
-        { 
-          id: "T1", name: "ALT", 
-          ops: [
-            { 
-              id: "O1", name: "Power Cycling", 
-              conds: [
-                { id: 1, name: '溫度', label: 'Temp', unit: '°C', type: 'Number', range: 'Y' },
-                { id: 2, name: '濕度', label: 'Humid', unit: '%RH', type: 'Number', range: 'N' }
-              ] 
-            }
-          ] 
-        }
+      id: "S1", name: "ALT",
+      steps: [
+        { id: "P1", type: "QT", op: "T0", condition: "125°C / 500hrs / Vcc=3.3V" },
+        { id: "P2", type: "QT", op: "T1", condition: "125°C / 1000hrs / Vcc=3.3V" },
+        { id: "P3", type: "RA", op: "Post-test", condition: "Room Temp / Functional Check" }
+      ]
+    },
+    {
+      id: "S2", name: "BHAST-PCB",
+      steps: [
+        { id: "P4", type: "Initial", op: "Pre-test", condition: "85°C / 85%RH" }
       ]
     }
   ]);
 
-  // 2. UI 狀態
-  const [selection, setSelection] = useState({ s: "S1", t: "T1", o: "O1" });
-  const [newCond, setNewCond] = useState({ name: '', label: '', unit: '', type: 'Number', range: 'N' });
-
-  // 取得當前編輯對象
-  const currentStress = data.find(s => s.id === selection.s);
-  const currentType = currentStress?.types.find(t => t.id === selection.t);
-  const currentOp = currentType?.ops.find(o => o.id === selection.o);
-
-  // --- 核心邏輯：將巢狀資料扁平化，生成類似 Excel 的清單 ---
-  const generateExcelPreview = () => {
-    let rows = [];
-    data.forEach(s => {
-      s.types.forEach(t => {
-        t.ops.forEach(o => {
-          o.conds.forEach(c => {
-            rows.push({
-              stress: s.name,
-              type: t.name,
-              op: o.name,
-              cond: c.name,
-              label: c.label,
-              unit: c.unit,
-              range: c.range
-            });
-          });
-        });
-      });
-    });
-    return rows;
-  };
-
-  const excelRows = generateExcelPreview();
+  const [activeId, setActiveId] = useState("S1");
+  const currentStress = data.find(s => s.id === activeId);
 
   return (
-    <div className="container-fluid py-4" style={{ backgroundColor: "#f4f7f6", minHeight: "100vh" }}>
+    <div className="container-fluid py-2" style={{ backgroundColor: "#f8f9fa", minHeight: "100vh" }}>
       
-      {/* 區塊 A: 頂部路徑選擇 (管理編輯目標) */}
-      <div className="card shadow-sm mb-4 border-0">
-        <div className="card-header bg-white fw-bold border-bottom">
-          <i className="bi bi-pencil-square me-2"></i>編輯路徑設定
-        </div>
-        <div className="card-body d-flex gap-3 align-items-center">
-          <div className="flex-grow-1">
-            <label className="small text-muted">Stress</label>
-            <select className="form-select" value={selection.s} onChange={e => setSelection({s: e.target.value, t: '', o: ''})}>
-              {data.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div className="flex-grow-1">
-            <label className="small text-muted">Type</label>
-            <select className="form-select" value={selection.t} onChange={e => setSelection({...selection, t: e.target.value, o: ''})}>
-              <option value="">選擇 Type</option>
-              {currentStress?.types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-          <div className="flex-grow-1">
-            <label className="small text-muted">Operation</label>
-            <select className="form-select" value={selection.o} onChange={e => setSelection({...selection, o: e.target.value})}>
-              <option value="">選擇 Operation</option>
-              {currentType?.ops.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-          </div>
-          <div className="align-self-end">
-            <button className="btn btn-primary px-4">💾 儲存變更</button>
-          </div>
+      {/* Header Section */}
+      <div className="mb-2 px-1 border-bottom pb-2">
+
+        <div className="text-muted small fw-bold mt-1" style={{ fontSize: '1rem', letterSpacing: '0.5px' }}>
+          TEST SETTINGS
         </div>
       </div>
 
-      {/* 區塊 B: PPT 矩陣編輯區 (針對單個 Operation) */}
-      <div className="card shadow-sm mb-5 border-0">
-        <div className="card-header bg-warning text-dark fw-bold">
-          4. Condition 屬性定義 (當前選定步驟)
-        </div>
-        <div className="table-responsive">
-          <table className="table table-hover align-middle mb-0 text-center">
-            <thead className="table-light">
-              <tr className="small">
-                <th>條件名稱</th><th>標題</th><th>單位</th><th>類型</th><th>Range</th><th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentOp?.conds.map(c => (
-                <tr key={c.id}>
-                  <td>{c.name}</td><td>{c.label}</td><td>{c.unit}</td><td>{c.type}</td>
-                  <td>{c.range === 'Y' ? '✅' : '❌'}</td>
-                  <td><button className="btn btn-sm text-danger">🗑️</button></td>
-                </tr>
+      <div className="row g-2">
+        {/* Left Sidebar: Stress List & Add Action */}
+        <div className="col-md-2">
+          <div className="card border shadow-sm rounded-1">
+            <div className="list-group list-group-flush rounded-1">
+              <div className="list-group-item bg-light py-2 small fw-bold text-secondary">Stress</div>
+              {data.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveId(s.id)}
+                  className={`list-group-item list-group-item-action py-2 border-0 d-flex justify-content-between align-items-center ${activeId === s.id ? 'bg-primary text-white fw-bold' : 'text-dark small'}`}
+                >
+                  <span className="text-truncate">{s.name}</span>
+                  <ChevronRight size={12} className={activeId === s.id ? 'opacity-100' : 'opacity-25'} />
+                </button>
               ))}
-              <tr style={{ backgroundColor: "#fffbe6" }}>
-                <td><input className="form-control form-control-sm" placeholder="名稱" /></td>
-                <td><input className="form-control form-control-sm" placeholder="標題" /></td>
-                <td><input className="form-control form-control-sm" placeholder="單位" /></td>
-                <td><select className="form-select form-select-sm"><option>Number</option></select></td>
-                <td><input type="checkbox" /></td>
-                <td><button className="btn btn-warning btn-sm w-100">新增</button></td>
-              </tr>
-            </tbody>
-          </table>
+              {/* Add Stress moved here */}
+              <button className="list-group-item list-group-item-action py-2 text-primary small fw-bold text-center border-top bg-white hover-bg-light">
+                <Plus size={14} className="me-1" /> Add Stress
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Content: Excel-style Workflow Grid */}
+        <div className="col-md-10">
+          <div className="card border shadow-sm rounded-1 overflow-hidden">
+            <div className="card-header bg-white py-2 d-flex justify-content-between align-items-center border-bottom">
+              <div className="d-flex align-items-center gap-2">
+                <FileText size={16} className="text-muted" />
+                <span className="fw-bold text-dark small">{currentStress?.name}</span>
+              </div>
+              <button className="btn btn-success btn-sm px-3 d-flex align-items-center gap-1 py-1 shadow-sm">
+                <Save size={14} /> SAVE SETTINGS
+              </button>
+            </div>
+
+            <div className="table-responsive">
+              <table className="table table-bordered table-sm mb-0 align-middle">
+                <thead style={{ backgroundColor: "#f1f5f9" }}>
+                  <tr className="text-secondary small fw-bold" style={{ fontSize: '0.75rem' }}>
+                    <th className="text-center py-2" style={{ width: "50px" }}>STEP</th>
+                    <th className="ps-2">TYPE</th>
+                    <th className="ps-2">OPERATION</th>
+                    <th className="ps-2">CONDITION</th>
+                    <th className="text-center" style={{ width: "50px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentStress?.steps.map((step, index) => (
+                    <tr key={step.id}>
+                      <td className="text-center text-muted fw-bold bg-light small">{index + 1}</td>
+                      <td className="p-0">
+                        <input className="form-control form-control-sm border-0 bg-transparent rounded-0 shadow-none px-2" defaultValue={step.type} />
+                      </td>
+                      <td className="p-0">
+                        <input className="form-control form-control-sm border-0 bg-transparent rounded-0 shadow-none px-2 fw-medium" defaultValue={step.op} />
+                      </td>
+                      <td className="p-0">
+                        <input className="form-control form-control-sm border-0 bg-transparent rounded-0 shadow-none px-2" defaultValue={step.condition} />
+                      </td>
+                      <td className="text-center">
+                        <button className="btn btn-link text-danger p-0 shadow-none opacity-75 hover-opacity-100">
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  
+                  {/* Excel-style Add Row */}
+                  <tr style={{ backgroundColor: "rgba(13, 110, 253, 0.03)" }}>
+                    <td className="text-center text-primary fw-bold small">+</td>
+                    <td className="p-0"><input className="form-control form-control-sm border-0 bg-transparent rounded-0 px-2" placeholder="New Type" /></td>
+                    <td className="p-0"><input className="form-control form-control-sm border-0 bg-transparent rounded-0 px-2" placeholder="New Op" /></td>
+                    <td className="p-0"><input className="form-control form-control-sm border-0 bg-transparent rounded-0 px-2" placeholder="Input condition string..." /></td>
+                    <td className="text-center">
+                      <button className="btn btn-primary btn-sm px-2 py-0" style={{ fontSize: '0.7rem' }}>ADD</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="mt-2 text-end">
+            <span className="text-muted" style={{ fontSize: '0.7rem' }}>* Steps are automatically numbered sequentially.</span>
+          </div>
         </div>
       </div>
-
-      {/* 區塊 C: Excel 全局資料預覽表 (你要的橫向清單) */}
-      <div className="card shadow-sm border-0">
-        <div className="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-          <span><i className="bi bi-table me-2"></i>全局資料總表 (Excel 預覽)</span>
-          <button className="btn btn-sm btn-outline-light">📤 匯出 Excel</button>
-        </div>
-        <div className="table-responsive" style={{ maxHeight: "400px" }}>
-          <table className="table table-sm table-bordered table-striped mb-0 small text-center">
-            <thead className="table-secondary sticky-top">
-              <tr>
-                <th>Stress Name</th>
-                <th>Type Name</th>
-                <th>Operation</th>
-                <th>Condition Name</th>
-                <th>UI Label</th>
-                <th>Unit</th>
-                <th>Range</th>
-              </tr>
-            </thead>
-            <tbody>
-              {excelRows.map((row, index) => (
-                <tr key={index}>
-                  <td className="fw-bold">{row.stress}</td>
-                  <td className="text-primary">{row.type}</td>
-                  <td className="text-success">{row.op}</td>
-                  <td>{row.cond}</td>
-                  <td>{row.label}</td>
-                  <td>{row.unit}</td>
-                  <td>{row.range}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
     </div>
   );
 };

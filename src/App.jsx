@@ -6,6 +6,21 @@ import 'bootstrap/dist/js/bootstrap.bundle.min';
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import logoImg from "./assets/company-logo.png";
+
+// === 引入 Lucide 專業圖示 ===
+import { 
+  LayoutGrid, 
+  ShieldCheck, 
+  Settings, 
+  Search, 
+  PlusCircle, 
+  ClipboardCheck, 
+  FileEdit,
+  ChevronRight,
+  ChevronDown,
+  Menu // 引入專業選單圖示
+} from 'lucide-react';
+
 // === 引入外部翻譯設定 ===
 import "./i18n"; 
 import { useTranslation } from "react-i18next";
@@ -199,12 +214,33 @@ function AppContent() {
     fontSize: "0.85rem"
   });
 
+//登入頁面//
   if (!user) {
     return (
       <div className="page page-center">
         <div className="container container-tight py-4">
           <div className="text-center mb-4">
-            <h1 className="fw-bold mb-1">{t("SYSTEM_TITLE")}</h1>
+            {/* Flex 容器：讓 LOGO 與文字橫向排列並置中 */}
+            <div className="d-flex align-items-center justify-content-center gap-2 mb-2">
+              <img 
+                src={logoImg} 
+                alt="Logo" 
+                style={{ 
+                  height: "30px",          // 手動調整：LOGO 高度
+                  width: "auto", 
+                  filter: "invert(0.8) brightness(0.5)", // 顏色修正：讓白色 LOGO 變深
+                  flexShrink: 0            // 防止 LOGO 被壓縮
+                }} 
+              />
+              <h1 className="fw-bold m-0" style={{ 
+                fontSize: "1.6rem", 
+                color: "#030303ff",          // 標題顏色
+                whiteSpace: "nowrap"       // 強制標題不換列
+              }}>
+                {t("SYSTEM_TITLE")}
+              </h1>
+            </div>
+            
             <div className="mt-2">
               <button className="btn btn-sm btn-ghost-primary" onClick={() => changeLanguage('en')}>EN</button>
               <span className="mx-1 text-muted">|</span>
@@ -236,23 +272,30 @@ function AppContent() {
   const isTechnician = userRole === ROLES.TECHNICIAN;
 
   const navItemStyle = (path) => ({
-    borderBottom: "1px solid rgba(255, 255, 255, 0.15)",
-    backgroundColor: isActive(path) ? "rgba(0, 0, 0, 0.25)" : "transparent",
-    borderLeft: isActive(path) ? "4px solid #3b82f6" : "4px solid transparent",
-    transition: "all 0.2s ease"
+    borderBottom: "1px solid #f1f5f9",
+    backgroundColor: isActive(path) ? "#eff6ff" : "transparent",
+    borderLeft: isActive(path) ? "4px solid #2563eb" : "4px solid transparent",
+    transition: "all 0.2s ease",
+    color: isActive(path) ? "#1e40af" : "#475569"
   });
 
   return (
     <div className="page" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", margin: 0, padding: 0 }}>
       <style>{`
         .lang-btn:hover { background: rgba(255, 255, 255, 0.1) !important; color: #fff !important; }
-        .nav-link:hover { background: rgba(0, 0, 0, 0.1); }
-        /* 核心修正：強制移除標題欄與內容區的所有外距 */
+        .sidebar-link:hover { 
+          background-color: #f8fafc !important; 
+          color: #2563eb !important; 
+        }
+        /* 頂欄按鈕 Hover 效果 */
+        .header-btn:hover {
+          background-color: rgba(255, 255, 255, 0.1) !important;
+          border-radius: 4px;
+        }
         .page-header { margin-bottom: 0 !important; }
         .page-body { margin-top: 0 !important; }
       `}</style>
 
-      {/* 獨立頂欄 */}
       <header className="page-header" style={{ 
         background: "#1e3a8a", 
         padding: "10px 20px", 
@@ -263,8 +306,12 @@ function AppContent() {
         margin: 0 
       }}>
         <div className="d-flex align-items-center w-100">
-          <button className="navbar-toggler me-3 d-block" onClick={() => setSidebarOpen((v) => !v)}>☰</button>
-          <div className="d-flex align-items-center" style={{ marginLeft: "-10px" }}> 
+          {/* 選單圖示 Hover 灰底效果 */}
+          <button className="btn btn-link header-btn p-0 me-1 text-white border-0 shadow-none d-flex align-items-center" onClick={() => setSidebarOpen((v) => !v)}>
+            <Menu size={24} />
+          </button>
+          
+          <div className="d-flex align-items-center" style={{ marginLeft: "0px" }}> 
             <img src={logoImg} alt="Logo" style={{ height: "22px", width: "auto", marginRight: "10px" }} />
             <h2 className="page-title" style={{ margin: 0, color: "#ffffff", fontWeight: "600", letterSpacing: "1px", fontSize: "1.2rem" }}>
               {t("SYSTEM_TITLE")}
@@ -278,7 +325,8 @@ function AppContent() {
           </div>
 
           <div className="position-relative" ref={userMenuRef}>
-            <button className="btn btn-link d-flex align-items-center text-decoration-none p-0" style={{ color: "#ffffff" }} onClick={() => setUserMenuOpen(!userMenuOpen)}>
+            {/* 使用者選單 Hover 灰底效果 */}
+            <button className="btn btn-link header-btn d-flex align-items-center text-decoration-none px-2 py-1" style={{ color: "#ffffff", border: "none" }} onClick={() => setUserMenuOpen(!userMenuOpen)}>
               <span className="avatar avatar-sm bg-blue-lt me-2" style={{ border: "1px solid #fff" }}>{user?.charAt(0)}</span>
               <div className="text-start d-none d-md-block">
                 <div className="fw-bold small" style={{ lineHeight: "1.2" }}>{user}</div>
@@ -294,13 +342,10 @@ function AppContent() {
         </div>
       </header>
 
-      {/* 下方主要區域 */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", marginTop: 0 }}>
         
-        {/* 側邊欄 */}
         <aside
           className={`navbar navbar-vertical navbar-expand-lg ${sidebarOpen ? "show" : "d-none"}`}
-          data-bs-theme="dark"
           style={{
             width: 270,
             position: "absolute",
@@ -308,42 +353,62 @@ function AppContent() {
             top: 0,
             bottom: 0,
             zIndex: 1050,
-            backgroundColor: "#1e3a8a", 
-            borderRight: "1px solid rgba(255, 255, 255, 0.15)",
-            margin: 0
+            backgroundColor: "#ffffff", 
+            borderRight: "1px solid #e2e8f0", 
+            margin: 0,
+            boxShadow: "none"
           }}
         >
           <div className="container-fluid px-0">
-            <div className="px-0 py-2 border-bottom" style={{ borderColor: "rgba(255, 255, 255, 0.2)" }}>
-              <h1 className="navbar-brand fw-bold m-0 d-flex align-items-center gap-2" style={{ color: "#ffffff", fontSize: "1.2rem", letterSpacing: "0px" }}>
-                <span>⚙️</span> {t("MENU_MAIN")}
+            <div className="px-4 border-bottom" style={{ borderColor: "#f1f5f9", paddingTop: "8px", paddingBottom: "10px" }}>
+              <h1 className="navbar-brand fw-bold m-0 d-flex align-items-center gap-2" style={{ color: "#0f172a", fontSize: "1.05rem" }}>
+                <LayoutGrid size={18} strokeWidth={2.2} /> {t("MENU_MAIN")}
               </h1>
             </div>
-            <ul className="navbar-nav px-0">
+            <ul className="navbar-nav px-0 pt-2">
               {isAdmin && (
                 <li className="nav-item" style={navItemStyle("/permission")}>
-                  <button className={`nav-link btn w-100 text-start px-4 py-3 m-0 ${isActive("/permission") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/permission"); setSidebarOpen(false); }}>
-                    🔐 {t("NAV_PERMISSION")}
+                  <button className={`nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link ${isActive("/permission") ? "active fw-bold" : ""}`} style={{ color: "inherit",justifyContent: "flex-start" }} onClick={() => { navigate("/permission"); setSidebarOpen(false); }}>
+                    <ShieldCheck size={18} className="me-2" /> {t("NAV_PERMISSION")}
                   </button>
                 </li>
               )}
+
               {isAdmin && (
                 <li className="nav-item">
-                  <div style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.15)" }}>
-                    <button className="nav-link btn w-100 text-start px-4 py-3 m-0 d-flex align-items-center" onClick={() => setConfigSubMenuOpen(!configSubMenuOpen)}>
-                      <span className="flex-grow-1">🛠️ {t("NAV_CONFIG")}</span>
-                      <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>{configSubMenuOpen ? "▼" : "▶"}</span>
+                  <div style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    {/* 修正重點：使用 flex-grow-1 讓文字撐開，並給箭頭固定空間 */}
+                    <button 
+                      className="nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link" 
+                      style={{ color: "inherit",justifyContent: "flex-start" }} 
+                      onClick={() => setConfigSubMenuOpen(!configSubMenuOpen)}
+                    >
+                      <Settings size={18} className="me-2" style={{ flexShrink: 0 }} />
+                      
+                      <span className="flex-grow-" style={{ color: "inherit",justifyContent: "flex-start" }}>
+                        {t("NAV_CONFIG")}
+                      </span>
+
+                      {/* 箭頭容器：確保不被壓縮 */}
+                      <div style={{ flexShrink: 0, marginLeft: "8px", display: "flex", alignItems: "center" }}>
+                        {configSubMenuOpen ? (
+                          <ChevronDown size={16} style={{ opacity: 0.7 }} />
+                        ) : (
+                          <ChevronRight size={16} style={{ opacity: 0.7 }} />
+                        )}
+                      </div>
                     </button>
                   </div>
+                  
                   {configSubMenuOpen && (
-                    <ul className="list-unstyled mb-0">
+                    <ul className="list-unstyled mb-0" style={{ backgroundColor: "#fbfcfd" }}>
                       <li style={navItemStyle("/config")}>
-                        <button className={`nav-link btn w-100 text-start px-5 py-2 m-0 ${isActive("/config") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/config"); setSidebarOpen(false); }}>
+                        <button className={`nav-link btn w-100 text-start px-5 py-2 m-0 d-flex align-items-center sidebar-link ${isActive("/config") ? "active fw-bold" : ""}`} style={{ color: "inherit", fontSize: "0.9rem", justifyContent: "flex-start" }} onClick={() => { navigate("/config"); setSidebarOpen(false); }}>
                           <span className="me-2">•</span> {t("NAV_PROD_FAMILY")}
                         </button>
                       </li>
                       <li style={navItemStyle("/stress-config")}>
-                        <button className={`nav-link btn w-100 text-start px-5 py-2 m-0 ${isActive("/stress-config") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/stress-config"); setSidebarOpen(false); }}>
+                        <button className={`nav-link btn w-100 text-start px-5 py-2 m-0 d-flex align-items-center sidebar-link ${isActive("/stress-config") ? "active fw-bold" : ""}`} style={{ color: "inherit", fontSize: "0.9rem",  justifyContent: "flex-start" }} onClick={() => { navigate("/stress-config"); setSidebarOpen(false); }}>
                           <span className="me-2">•</span> {t("NAV_TEST_SET")}
                         </button>
                       </li>
@@ -351,24 +416,27 @@ function AppContent() {
                   )}
                 </li>
               )}
+
               {(isAdmin || isEngineer) && (
                 <li className="nav-item" style={navItemStyle("/list")}>
-                  <button className={`nav-link btn w-100 text-start px-4 py-3 m-0 ${isActive("/list") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/list"); setSidebarOpen(false); }}>
-                    🔍 {t("NAV_VIEW")}
+                  <button className={`nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link ${isActive("/list") ? "active fw-bold" : ""}`} style={{ color: "inherit", justifyContent: "flex-start" }} onClick={() => { navigate("/list"); setSidebarOpen(false); }}>
+                    <Search size={18} className="me-2" /> {t("NAV_VIEW")}
                   </button>
                 </li>
               )}
+
               {(isAdmin || isEngineer) && (
                 <li className="nav-item" style={navItemStyle("/create")}>
-                  <button className={`nav-link btn w-100 text-start px-4 py-3 m-0 ${isActive("/create") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/create"); setSidebarOpen(false); }}>
-                    ➕ {t("NAV_CREATE")}
+                  <button className={`nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link ${isActive("/create") ? "active fw-bold" : ""}`} style={{ color: "inherit", justifyContent: "flex-start" }} onClick={() => { navigate("/create"); setSidebarOpen(false); }}>
+                    <PlusCircle size={18} className="me-2" /> {t("NAV_CREATE")}
                   </button>
                 </li>
               )}
+
               {(isAdmin || isTechnician) && (
                 <li className="nav-item" style={navItemStyle("/checkinout")}>
-                  <button className={`nav-link btn w-100 text-start px-4 py-3 m-0 ${isActive("/checkinout") ? "active fw-bold text-white" : ""}`} onClick={() => { navigate("/checkinout"); setSidebarOpen(false); }}>
-                    ⏱️ {t("NAV_CHECK")}
+                  <button className={`nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link ${isActive("/checkinout") ? "active fw-bold" : ""}`} style={{ color: "inherit", justifyContent: "flex-start" }} onClick={() => { navigate("/checkinout"); setSidebarOpen(false); }}>
+                    <ClipboardCheck size={18} className="me-2" /> {t("NAV_CHECK")}
                   </button>
                 </li>
               )}
@@ -376,7 +444,6 @@ function AppContent() {
           </div>
         </aside>
 
-        {/* 分頁內容區 */}
         <main
           className="page-body"
           style={{
@@ -390,13 +457,13 @@ function AppContent() {
           }}
         >
           <Routes>
-            <Route path="/permission" element={isAdmin ? (<PageLayout title={t("NAV_PERMISSION")} icon="🔐"><PermissionMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/config" element={isAdmin ? (<PageLayout title={t("NAV_CONFIG")} icon="🛠️"><ConfigurationMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/stress-config" element={isAdmin ? (<PageLayout title={t("NAV_CONFIG")} icon="🛠️"><StressConfigPage /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/list" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_VIEW")} icon="🔍"><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
-            <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_CREATE")} icon="➕"><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/edit" element={(<PageLayout title={t("EDIT_PROJ")} icon="✏️"><RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} /></PageLayout>)} />
-            <Route path="/checkinout" element={(isAdmin || isTechnician) ? (<PageLayout title={t("NAV_CHECK")} icon="⏱️"><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/permission" element={isAdmin ? (<PageLayout title={t("NAV_PERMISSION")} icon={<ShieldCheck size={20} />}><PermissionMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/config" element={isAdmin ? (<PageLayout title={t("NAV_CONFIG")} icon={<Settings size={20} />}><ConfigurationMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/stress-config" element={isAdmin ? (<PageLayout title={t("NAV_CONFIG")} icon={<Settings size={20} />}><StressConfigPage /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/list" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_VIEW")} icon={<Search size={20} />}><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
+            <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_CREATE")} icon={<PlusCircle size={20} />}><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
+            <Route path="/edit" element={(<PageLayout title={t("EDIT_PROJ")} icon={<FileEdit size={20} />}><RunCardEditPage userRole={userRole} editingId={editingId} editFormData={editFormData} handleEditFormChange={handleEditFormChange} handleEditSubmit={handleEditSubmit} setPage={(p) => navigate("/"+p)} /></PageLayout>)} />
+            <Route path="/checkinout" element={(isAdmin || isTechnician) ? (<PageLayout title={t("NAV_CHECK")} icon={<ClipboardCheck size={20} />}><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/" element={<Navigate to={isAdmin ? "/permission" : (isEngineer ? "/create" : "/checkinout")} />} />
           </Routes>
         </main>

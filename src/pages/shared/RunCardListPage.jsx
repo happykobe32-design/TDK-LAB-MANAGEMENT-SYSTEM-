@@ -294,7 +294,7 @@ export default function RunCardListPage() {
       <div className="container-fluid py-4">
         
         {/* 統計數字 */}
-        <div className="row g-2 mb-1">
+        <div className="row g-2 mb-3">
           {[
             { label: "Total", val: stats.total, color: "#000" },
             { label: "Completed", val: stats.done, color: "#16a34a" },
@@ -560,10 +560,10 @@ export default function RunCardListPage() {
         <style>{`
           /* 頁面整體與容器佈局 */
           .main-page { width: 100%; min-height: 120vh; font-family: sans-serif; }
-          .container-fluid { padding-top: 0px !important; padding-bottom: 0px; }
+          .container-fluid { padding-top: 15px !important; padding-bottom: 0px; }
 
           /* 統計數據區塊 (Total, Completed 等數值框樣式) */
-          .stats-box { background: #fcfaf8ff; padding: 0px 3px; border-radius: 4px; }
+          .stats-box { background: #ffffffff; padding: 0px 5px; border-radius: 8px; }
           .stats-title { font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 0px; }
           .stats-num { font-size: 18px; font-weight: 700; }
 
