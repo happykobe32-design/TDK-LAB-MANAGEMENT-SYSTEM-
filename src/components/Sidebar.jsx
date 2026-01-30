@@ -3,8 +3,7 @@ import { LayoutGrid, ShieldCheck, Settings, Search, PlusCircle, ClipboardCheck, 
 import { useTranslation } from "react-i18next";
 import { useNavigate, useLocation } from "react-router-dom";
 
-const Sidebar = ({ 
-  sidebarOpen, 
+const Sidebar = ({ sidebarOpen, 
   setSidebarOpen, 
   isAdmin, 
   isEngineer, 
