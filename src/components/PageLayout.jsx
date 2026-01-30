@@ -12,8 +12,8 @@ export default function PageLayout({ title, icon, children }) {
         style={{
           background: "#ffffff",
           color: "#1e293b",
-          padding: "5px 10px", // 稍微增加一點內距，讓標題更透氣
-          borderBottom: "1px solid #e2e8f0",
+          padding: "4px 10px", // 稍微增加一點內距，讓標題更透氣
+          borderBottom: "1.5px solid #5da0f8ff",
           margin: 0,
           width: "100%",
           boxSizing: "border-box",
@@ -37,7 +37,7 @@ export default function PageLayout({ title, icon, children }) {
             fontSize: "1.25rem", 
             fontWeight: "700", 
             letterSpacing: "0.5px",
-            color: "#0f172a" 
+            color: "#2a1f0fff" 
           }}>
             {title}
           </h1>
@@ -49,7 +49,7 @@ export default function PageLayout({ title, icon, children }) {
         style={{ 
           flex: 1, 
           backgroundColor: "#ffffffff", 
-          padding: "0px",        // 調整滿版
+          padding: "0px",        // 關鍵 1: 將 24px 改為 0px，移除四周空隙
           margin: 0,
           width: "100%",
           boxSizing: "border-box",

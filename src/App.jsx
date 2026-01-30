@@ -7,22 +7,25 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import logoImg from "./assets/company-logo.png";
 
-// === 引入 Lucide 專業圖示 ===
+// === 引入 Lucide 專業圖示 (App 僅保留 Header/Layout 使用的圖示) ===
 import { 
-  LayoutGrid, 
   ShieldCheck, 
   Settings, 
   Search, 
   PlusCircle, 
   ClipboardCheck, 
-  ChevronRight,
-  ChevronDown,
-  Menu // 引入專業選單圖示
+  Menu 
 } from 'lucide-react';
+
+// === 引入外部組件 ===
+import LoginPage from "./components/LoginPage";
+import Sidebar from "./components/Sidebar";
+import PageLayout from "./components/PageLayout";
 
 // === 引入外部翻譯設定 ===
 import "./constants/i18n"; 
 import { useTranslation } from "react-i18next";
+
 // 頁面組件導入
 import PermissionMaintenancePage from "./pages/admin/PermissionMaintenancePage";
 import ConfigurationMaintenancePage from "./pages/admin/ConfigurationMaintenancePage";
@@ -30,7 +33,6 @@ import StressConfigPage from "./pages/admin/StressConfigPage";
 import RunCardListPage from "./pages/shared/RunCardListPage";
 import RunCardFormPage from "./pages/engineer/RunCardCreatePage";
 import CheckInOutPage from "./pages/technician/CheckInOutPage";
-import PageLayout from "./components/PageLayout";
 
 // ==================================================
 // 系統常數
@@ -83,8 +85,6 @@ function AppContent() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  const isActive = (path) => location.pathname === path;
 
   const handleLogin = () => {
     const { username, password } = loginData;
@@ -212,56 +212,15 @@ function AppContent() {
     fontSize: "0.85rem"
   });
 
-//登入頁面//
+// --- 如果未登入，顯示 LoginPage 元件 ---
   if (!user) {
     return (
-      <div className="page page-center">
-        <div className="container container-tight py-4">
-          <div className="text-center mb-4">
-            {/* Flex 容器：讓 LOGO 與文字橫向排列並置中 */}
-            <div className="d-flex align-items-center justify-content-center gap-2 mb-2">
-              <img 
-                src={logoImg} 
-                alt="Logo" 
-                style={{ 
-                  height: "30px",          // 手動調整：LOGO 高度
-                  width: "auto", 
-                  filter: "invert(0.8) brightness(0.5)", // 顏色修正：讓白色 LOGO 變深
-                  flexShrink: 0            // 防止 LOGO 被壓縮
-                }} 
-              />
-              <h1 className="fw-bold m-0" style={{ 
-                fontSize: "1.6rem", 
-                color: "#030303ff",          // 標題顏色
-                whiteSpace: "nowrap"       // 強制標題不換列
-              }}>
-                {t("SYSTEM_TITLE")}
-              </h1>
-            </div>
-            
-            <div className="mt-2">
-              <button className="btn btn-sm btn-ghost-primary" onClick={() => changeLanguage('en')}>EN</button>
-              <span className="mx-1 text-muted">|</span>
-              <button className="btn btn-sm btn-ghost-primary" onClick={() => changeLanguage('zh')}>中文</button>
-            </div>
-          </div>
-          <div className="card card-md shadow-sm">
-            <div className="card-body">
-              <h2 className="h3 text-center mb-4">{t("LOGIN")}</h2>
-              <div className="mb-3">
-                <label className="form-label">{t("USER_ID")}</label>
-                <input className="form-control" value={loginData.username} onChange={(e) => setLoginData({ ...loginData, username: e.target.value })} />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">{t("PASSWORD")}</label>
-                <input type="password" className="form-control" value={loginData.password} onChange={(e) => setLoginData({ ...loginData, password: e.target.value })} />
-              </div>
-              <button className="btn btn-primary w-100" onClick={handleLogin}>{t("LOGIN")}</button>
-              <div className="text-muted text-center mt-3 small">{t("PW_HINT")}</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <LoginPage 
+        loginData={loginData} 
+        setLoginData={setLoginData} 
+        handleLogin={handleLogin} 
+        changeLanguage={changeLanguage} 
+      />
     );
   }
 
@@ -269,47 +228,26 @@ function AppContent() {
   const isEngineer = userRole === ROLES.ENGINEER;
   const isTechnician = userRole === ROLES.TECHNICIAN;
 
-  const navItemStyle = (path) => ({
-    borderBottom: "1px solid #f1f5f9",
-    backgroundColor: isActive(path) ? "#eff6ff" : "transparent",
-    borderLeft: isActive(path) ? "4px solid #2563eb" : "4px solid transparent",
-    transition: "all 0.2s ease",
-    color: isActive(path) ? "#1e40af" : "#475569"
-  });
-
   return (
     <div className="page" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", margin: 0, padding: 0 }}>
       <style>{`
         .lang-btn:hover { background: rgba(255, 255, 255, 0.1) !important; color: #fff !important; }
-        .sidebar-link:hover { 
-          background-color: #f8fafc !important; 
-          color: #2563eb !important; 
-        }
-        /* 頂欄按鈕 Hover 效果 */
-        .header-btn:hover {
-          background-color: rgba(255, 255, 255, 0.1) !important;
-          border-radius: 4px;
-        }
+        .sidebar-link:hover { background-color: #f8fafc !important; color: #2563eb !important; }
+        .header-btn:hover { background-color: rgba(255, 255, 255, 0.1) !important; border-radius: 4px; }
         .page-header { margin-bottom: 0 !important; }
         .page-body { margin-top: 0 !important; }
       `}</style>
 
       <header className="page-header" style={{ 
-        background: "#1e3a8a", 
-        padding: "10px 20px", 
-        color: "#ffffff", 
-        boxShadow: "0 2px 4px rgba(0,0,0,0.1)", 
-        zIndex: 1100, 
-        flexShrink: 0, 
-        margin: 0 
+        background: "#1e3a8a", padding: "10px 20px", color: "#ffffff", 
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)", zIndex: 1100, flexShrink: 0, margin: 0 
       }}>
         <div className="d-flex align-items-center w-100">
-          {/* 選單圖示 Hover 灰底效果 */}
           <button className="btn btn-link header-btn p-0 me-1 text-white border-0 shadow-none d-flex align-items-center" onClick={() => setSidebarOpen((v) => !v)}>
             <Menu size={24} />
           </button>
           
-          <div className="d-flex align-items-center" style={{ marginLeft: "0px" }}> 
+          <div className="d-flex align-items-center"> 
             <img src={logoImg} alt="Logo" style={{ height: "22px", width: "auto", marginRight: "10px" }} />
             <h2 className="page-title" style={{ margin: 0, color: "#ffffff", fontWeight: "600", letterSpacing: "1px", fontSize: "1.2rem" }}>
               {t("SYSTEM_TITLE")}
@@ -323,7 +261,6 @@ function AppContent() {
           </div>
 
           <div className="position-relative" ref={userMenuRef}>
-            {/* 使用者選單 Hover 灰底效果 */}
             <button className="btn btn-link header-btn d-flex align-items-center text-decoration-none px-2 py-1" style={{ color: "#ffffff", border: "none" }} onClick={() => setUserMenuOpen(!userMenuOpen)}>
               <span className="avatar avatar-sm bg-blue-lt me-2" style={{ border: "1px solid #fff" }}>{user?.charAt(0)}</span>
               <div className="text-start d-none d-md-block">
@@ -342,105 +279,16 @@ function AppContent() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", marginTop: 0 }}>
         
-        <aside
-          className={`navbar navbar-vertical navbar-expand-lg ${sidebarOpen ? "show" : "d-none"}`}
-          style={{
-            width: 270,
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            zIndex: 1050,
-            backgroundColor: "#ffffff", 
-            borderRight: "1px solid #e2e8f0", 
-            margin: 0,
-            boxShadow: "none"
-          }}
-        >
-          <div className="container-fluid px-0">
-            <div className="px-4 border-bottom" style={{ borderColor: "#f1f5f9", paddingTop: "8px", paddingBottom: "10px" }}>
-              <h1 className="navbar-brand fw-bold m-0 d-flex align-items-center gap-2" style={{ color: "#0f172a", fontSize: "1.05rem" }}>
-                <LayoutGrid size={18} strokeWidth={2.2} /> {t("MENU_MAIN")}
-              </h1>
-            </div>
-            <ul className="navbar-nav px-0 pt-2">
-              {isAdmin && (
-                <li className="nav-item" style={navItemStyle("/permission")}>
-                  <button className={`nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link ${isActive("/permission") ? "active fw-bold" : ""}`} style={{ color: "inherit",justifyContent: "flex-start" }} onClick={() => { navigate("/permission"); setSidebarOpen(false); }}>
-                    <ShieldCheck size={18} className="me-2" /> {t("NAV_PERMISSION")}
-                  </button>
-                </li>
-              )}
-
-              {isAdmin && (
-                <li className="nav-item">
-                  <div style={{ borderBottom: "1px solid #f1f5f9" }}>
-                    {/* 修正重點：使用 flex-grow-1 讓文字撐開，並給箭頭固定空間 */}
-                    <button 
-                      className="nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link" 
-                      style={{ color: "inherit",justifyContent: "flex-start" }} 
-                      onClick={() => setConfigSubMenuOpen(!configSubMenuOpen)}
-                    >
-                      <Settings size={18} className="me-2" style={{ flexShrink: 0 }} />
-                      
-                      <span className="flex-grow-" style={{ color: "inherit",justifyContent: "flex-start" }}>
-                        {t("NAV_CONFIG")}
-                      </span>
-
-                      {/* 箭頭容器：確保不被壓縮 */}
-                      <div style={{ flexShrink: 0, marginLeft: "8px", display: "flex", alignItems: "center" }}>
-                        {configSubMenuOpen ? (
-                          <ChevronDown size={16} style={{ opacity: 0.7 }} />
-                        ) : (
-                          <ChevronRight size={16} style={{ opacity: 0.7 }} />
-                        )}
-                      </div>
-                    </button>
-                  </div>
-                  
-                  {configSubMenuOpen && (
-                    <ul className="list-unstyled mb-0" style={{ backgroundColor: "#fbfcfd" }}>
-                      <li style={navItemStyle("/config")}>
-                        <button className={`nav-link btn w-100 text-start px-5 py-2 m-0 d-flex align-items-center sidebar-link ${isActive("/config") ? "active fw-bold" : ""}`} style={{ color: "inherit", fontSize: "0.9rem", justifyContent: "flex-start" }} onClick={() => { navigate("/config"); setSidebarOpen(false); }}>
-                          <span className="me-2">•</span> {t("NAV_PROD_FAMILY")}
-                        </button>
-                      </li>
-                      <li style={navItemStyle("/stress-config")}>
-                        <button className={`nav-link btn w-100 text-start px-5 py-2 m-0 d-flex align-items-center sidebar-link ${isActive("/stress-config") ? "active fw-bold" : ""}`} style={{ color: "inherit", fontSize: "0.9rem",  justifyContent: "flex-start" }} onClick={() => { navigate("/stress-config"); setSidebarOpen(false); }}>
-                          <span className="me-2">•</span> {t("NAV_TEST_SET")}
-                        </button>
-                      </li>
-                    </ul>
-                  )}
-                </li>
-              )}
-
-              {(isAdmin || isEngineer) && (
-                <li className="nav-item" style={navItemStyle("/list")}>
-                  <button className={`nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link ${isActive("/list") ? "active fw-bold" : ""}`} style={{ color: "inherit", justifyContent: "flex-start" }} onClick={() => { navigate("/list"); setSidebarOpen(false); }}>
-                    <Search size={18} className="me-2" /> {t("NAV_VIEW")}
-                  </button>
-                </li>
-              )}
-
-              {(isAdmin || isEngineer) && (
-                <li className="nav-item" style={navItemStyle("/create")}>
-                  <button className={`nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link ${isActive("/create") ? "active fw-bold" : ""}`} style={{ color: "inherit", justifyContent: "flex-start" }} onClick={() => { navigate("/create"); setSidebarOpen(false); }}>
-                    <PlusCircle size={18} className="me-2" /> {t("NAV_CREATE")}
-                  </button>
-                </li>
-              )}
-
-              {(isAdmin || isTechnician) && (
-                <li className="nav-item" style={navItemStyle("/checkinout")}>
-                  <button className={`nav-link btn w-100 text-start  py-3 m-0 d-flex align-items-center sidebar-link ${isActive("/checkinout") ? "active fw-bold" : ""}`} style={{ color: "inherit", justifyContent: "flex-start" }} onClick={() => { navigate("/checkinout"); setSidebarOpen(false); }}>
-                    <ClipboardCheck size={18} className="me-2" /> {t("NAV_CHECK")}
-                  </button>
-                </li>
-              )}
-            </ul>
-          </div>
-        </aside>
+        {/* === 抽離後的 Sidebar 元件 === */}
+        <Sidebar 
+          sidebarOpen={sidebarOpen}
+          setSidebarOpen={setSidebarOpen}
+          isAdmin={isAdmin}
+          isEngineer={isEngineer}
+          isTechnician={isTechnician}
+          configSubMenuOpen={configSubMenuOpen}
+          setConfigSubMenuOpen={setConfigSubMenuOpen}
+        />
 
         <main
           className="page-body"
