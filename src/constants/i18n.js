@@ -37,7 +37,6 @@ const resources = {
       "LOGIN": "登錄",
       "USER_ID": "帳號",
       "PASSWORD": "密碼",
-      "PW_HINT": "預設密碼：1234",
       "EDIT_PROJ": "編輯專案"
     }
   }

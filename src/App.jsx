@@ -1,3 +1,4 @@
+import apiClient from "./api/axios"; // 確保路徑指向你剛剛建立的檔案 連接後端users
 import { useState, useEffect, useRef } from "react";
 // 引入 React Router 相關組件
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
@@ -74,35 +75,64 @@ function AppContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogin = () => {
-    const { username, password } = loginData;
-    if (password !== "1234") return alert("密碼錯誤");
+  // 1. 確保在 App.jsx 上方引入您的 axios 實例 (假設檔名為 apiClient)
+const handleLogin = async () => {
+  const { username, password } = loginData;
+  // === 新增：開發者萬用帳號 (Super User) ===  // 可自定義帳密
+  if (username === "123" && password === "123") {
+    const devUser = "Developer Mode";
+    const devRole = ROLES.ADMIN;
 
-    let loggedUser = "";
-    let loggedRole = "";
-
-    if (username === "admin") {
-      loggedUser = "Admin User";
-      loggedRole = ROLES.ADMIN;
-      navigate("/permission"); 
-    } else if (username === "engineer") {
-      loggedUser = "Engineer Chris";
-      loggedRole = ROLES.ENGINEER;
-      navigate("/create"); 
-    } else if (username === "technician") {
-      loggedUser = "Tech Sam";
-      loggedRole = ROLES.TECHNICIAN;
-      navigate("/checkinout");
-    } else {
-      return alert("帳號不存在 (admin / engineer / technician)");
-    }
-
-    setUser(loggedUser);
-    setUserRole(loggedRole);
-    sessionStorage.setItem("logged_user", loggedUser);
-    sessionStorage.setItem("logged_role", loggedRole);
+    setUser(devUser);
+    setUserRole(devRole);
+    sessionStorage.setItem("logged_user", devUser);
+    sessionStorage.setItem("logged_role", devRole);
+    
     setSidebarOpen(false);
-  };
+    navigate("/permission"); // 直接進入管理員頁面
+    return; // 結束函式，不執行下方的 API 請求
+  }
+  // ======================================
+  try {
+    // 2. 呼叫後端 API (傳送 user_name 和 email)
+    const response = await apiClient.post("/users/login", {
+      user_name: username, 
+      email: password      // 後端目前的邏輯是用 email 當作驗證欄位
+    });
+
+    if (response.data.status === "success") {
+      const dbUser = response.data.user;
+
+      // 3. 根據資料庫 role_id 判斷前端權限 (假設 1 為 Admin)
+      let loggedRole = "";
+      let redirectPath = "";
+
+      if (dbUser.role_id === 1) {
+        loggedRole = ROLES.ADMIN;
+        redirectPath = "/permission";
+      } else if (dbUser.role_id === 2) {
+        loggedRole = ROLES.ENGINEER;
+        redirectPath = "/create";
+      } else {
+        loggedRole = ROLES.TECHNICIAN;
+        redirectPath = "/checkinout";
+      }
+
+      // 4. 儲存登入資訊
+      setUser(dbUser.user_name);
+      setUserRole(loggedRole);
+      sessionStorage.setItem("logged_user", dbUser.user_name);
+      sessionStorage.setItem("logged_role", loggedRole);
+      
+      setSidebarOpen(false);
+      navigate(redirectPath);
+    }
+  } catch (error) {
+    // 顯示後端傳回的錯誤訊息 (如：帳號名稱不正確)
+    const errorMsg = error.response?.data?.detail || "網路或連線失敗";
+    alert(errorMsg);
+  }
+};
 
   const handleLogout = () => {
     setUser(null);

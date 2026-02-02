@@ -47,7 +47,6 @@ const LoginPage = ({ loginData, setLoginData, handleLogin, changeLanguage }) => 
               />
             </div>
             <button className="btn btn-primary w-100" onClick={handleLogin}>{t("LOGIN")}</button>
-            <div className="text-muted text-center mt-3 small">{t("PW_HINT")}</div>
           </div>
         </div>
       </div>
