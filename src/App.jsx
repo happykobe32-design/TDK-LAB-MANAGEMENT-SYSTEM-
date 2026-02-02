@@ -6,26 +6,15 @@ import 'bootstrap/dist/js/bootstrap.bundle.min';
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import logoImg from "./assets/company-logo.png";
-
 // === 引入 Lucide 專業圖示 (App 僅保留 Header/Layout 使用的圖示) ===
-import { 
-  ShieldCheck, 
-  Settings, 
-  Search, 
-  PlusCircle, 
-  ClipboardCheck, 
-  Menu 
-} from 'lucide-react';
-
+import { ShieldCheck, Settings, Search, PlusCircle, ClipboardCheck,Menu } from 'lucide-react';
 // === 引入外部組件 ===
 import LoginPage from "./components/LoginPage";
 import Sidebar from "./components/Sidebar";
 import PageLayout from "./components/PageLayout";
-
 // === 引入外部翻譯設定 ===
 import "./constants/i18n"; 
 import { useTranslation } from "react-i18next";
-
 // 頁面組件導入
 import PermissionMaintenancePage from "./pages/admin/PermissionMaintenancePage";
 import ConfigurationMaintenancePage from "./pages/admin/ConfigurationMaintenancePage";
@@ -33,7 +22,6 @@ import StressConfigPage from "./pages/admin/StressConfigPage";
 import RunCardListPage from "./pages/shared/RunCardListPage";
 import RunCardFormPage from "./pages/engineer/RunCardCreatePage";
 import CheckInOutPage from "./pages/technician/CheckInOutPage";
-
 // ==================================================
 // 系統常數
 const ROLES = {

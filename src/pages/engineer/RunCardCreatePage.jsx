@@ -7,7 +7,8 @@ import { AllCommunityModule } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import "../../pages/engineer/RunCardCreatePage.css";
-
+// 在檔案頂部引入
+import { Copy, Trash2, FastForward, RotateCcw, Bookmark, Star} from "lucide-react";
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 const API_BASE = "http://localhost:5001";
@@ -189,7 +190,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   const newRow = () => ({
     _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2),
     stress: "", type: "", operation: "", condition: "",
-    programName: "", testProgram: "", testScript: "", note: "",
+    programName: "", testProgram: "", testScript: "",
   });
 
   const createInitialLot = () => ({
@@ -359,7 +360,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   // 5. AG Grid Columns
   const columnDefs = useMemo(() => [
     { 
-      headerName: "Stress", field: "stress", width: 140, rowDrag: true, 
+      headerName: "Stress", field: "stress", width: 160, rowDrag: true, 
       cellRenderer: (p) => (
         <EditableDropdown 
           value={p.value} 
@@ -370,7 +371,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       ),
     },
     { 
-      headerName: "Type", field: "type", width: 120, 
+      headerName: "Type", field: "type", width: 140, 
       cellRenderer: (p) => {
         const types = [...new Set((stressMeta[p.data.stress] || []).map(r => r.Type).filter(Boolean))];
         return <EditableDropdown value={p.value} options={types} placeholder="-- Type --" disabled={!p.data.stress} onChange={(val) => updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { type: val, operation: "", condition: "" })} />;
@@ -387,21 +388,61 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         }} />;
       }
     },
+    { headerName: "Condition", field: "condition", editable: true, width: 170,wrapText: true, autoHeight: true,cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
+    { headerName: "Program Name", field: "programName", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
+    { headerName: "Test Program", field: "testProgram", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
+    { headerName: "Test Script", field: "testScript", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { 
-        headerName: "Condition", field: "condition", editable: true, width: 140,
-        wrapText: true, autoHeight: true,
-        cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } 
+      headerName: "", 
+      width: 85, 
+      pinned: "right", 
+      cellRenderer: (p) => {
+        // 判斷是否已經被 Skip
+        const isSkipped = p.data.startTime === "SKIPPED";
+        
+        return (
+          <div className="d-flex gap-2 justify-content-center align-items-center h-100"> 
+          {/* copy 按鈕 */}
+            <button 
+              className="grid-icon-btn copy-btn" 
+              title="Copy" 
+              onClick={() => duplicateRow(p.context.lotId, p.context.stressId, p.data)}
+              style={{ color: "#64748b" }} // 設定顏色
+            >
+              <Copy size={16} />
+            </button>       
+
+            {/* Delete 按鈕 */}
+            <button 
+              className="grid-icon-btn" 
+              title="Delete" 
+              onClick={() => deleteRow(p.context.lotId, p.context.stressId, p.data._rid)}
+              style={{ color: "#ef4444" }}
+            >
+              <Trash2 size={16} />
+            </button>
+            
+            {/* Skip 按鈕 */}
+            <button 
+              className={`grid-icon-btn ${isSkipped ? 'skip-active-btn' : ''}`} 
+              title={isSkipped ? "Unskip Step" : "Skip Step"} 
+              onClick={() => {
+                const action = isSkipped ? "UNSKIP" : "SKIP";
+                if (window.confirm(`Are you sure you want to ${action} this step?`)) {
+                  const patch = isSkipped 
+                    ? { startTime: "", endTime: "" } 
+                    : { startTime: "SKIPPED", endTime: "SKIPPED" };
+                  updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, patch);
+                }
+              }}
+              style={{ color: isSkipped ? "#3b82f6" : "#64748b" }}
+            >
+              {isSkipped ? <RotateCcw size={16} /> : <FastForward size={16} />}
+            </button>
+          </div> 
+        );
+      }, 
     },
-    { headerName: "Program Name", field: "programName", editable: true, width: 130, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
-    { headerName: "Test Program", field: "testProgram", editable: true, width: 120, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
-    { headerName: "Test Script", field: "testScript", editable: true, width: 110, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
-    { headerName: "Note", field: "note", editable: true, width: 180, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
-    { headerName: "", width: 80, pinned: "right", cellRenderer: (p) => ( 
-      <div className="d-flex gap-2 justify-content-center align-items-center h-100"> 
-        <button className="grid-icon-btn copy-btn" title="Copy" onClick={() => duplicateRow(p.context.lotId, p.context.stressId, p.data)}>📋</button> 
-        <button className="grid-icon-btn delete-btn" title="Delete" onClick={() => deleteRow(p.context.lotId, p.context.stressId, p.data._rid)}>🗑️</button> 
-      </div> 
-    ), },
   ], [stressMeta, updateRowFields]);
 
   return (
@@ -473,8 +514,8 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
             
             <div className="d-flex align-items-center gap-2" style={{ position: "relative" }}>
               <div className="custom-tpl-dropdown">
-                <button className="tpl-dropdown-trigger" onClick={() => setShowTplList(showTplList === lot.id ? null : lot.id)}>
-                  📋 Apply Template... <span style={{ fontSize: "10px", marginLeft: "5px" }}>▼</span>
+                <button className="tpl-dropdown-trigger" onClick={() => setShowTplList(showTplList === lot.id ? null : lot.id)} style={{ padding: "2px 8px", border: "1px solid #fac250ff", background: "#fff6a9ff", borderRadius: "4px", fontSize: "11px", fontWeight: "bold" }}>
+                  <Star size={15} /> Apply Template <span style={{ padding: "2px 2px", fontSize: "10px",  }}>▼</span>
                 </button>
                 {showTplList === lot.id && (
                   <div className="tpl-dropdown-menu">
@@ -482,13 +523,14 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                     {templates.map((t, idx) => (
                       <div key={idx} className="tpl-option-item" onClick={() => applyTemplate(lot.id, t)}>
                         <span className="tpl-name">{t.name}</span>
-                        <button className="tpl-del-btn" onClick={(e) => { e.stopPropagation(); deleteTemplateAction(idx); }}>🗑️</button>
+                        <button className="tpl-del-btn" onClick={(e) => { e.stopPropagation(); deleteTemplateAction(idx); }} style={{ color: "#ef4444" }}>
+                          <Trash2 size={16} /></button>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-              <button className="custom-btn-effect" onClick={() => saveAsTemplate(lot)} style={{ padding: "2px 10px", border: "1px solid #ffc107", background: "#fff9e6", borderRadius: "4px", fontSize: "11px", fontWeight: "bold" }}>⭐ Save Template</button>
+              <button className="custom-btn-effect" onClick={() => saveAsTemplate(lot)} style={{ padding: "2px 5px", border: "1px solid #c2c1bfff", background: "#ffffffff", borderRadius: "4px", fontSize: "11px", fontWeight: "bold" }}> <Bookmark size={16} /> Save Template</button>
             </div>
           </div>
 
@@ -505,6 +547,11 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                   onRowDragEnd={(e) => onRowDragEnd(e, lot.id, s.id)}
                   onGridReady={onGridReady}
                   onColumnResized={onColumnResized}
+                  getRowStyle={(params) => {
+                    if (params.data.startTime === "SKIPPED") {
+                      return { backgroundColor: "#e3e5e8ff", color: "#94a3b8", fontStyle: "italic" };
+                    }
+                  }}
                   getRowId={(p) => p.data?._rid}
                   defaultColDef={{ resizable: true, sortable: true, singleClickEdit: true, wrapText: true, autoHeight: true }}
                 />

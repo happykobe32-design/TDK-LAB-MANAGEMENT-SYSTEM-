@@ -6,12 +6,8 @@ export default function RunCardListPage() {
   const [allData, setAllData] = useState([]);
   const [isDeleteMode, setIsDeleteMode] = useState(false);
 
-  //進階create跳轉（加入確認提示）
-  const handleAdvancedEdit = (row) => {
-    if (window.confirm("Are you sure you want to go to create page edit?")) {
-      navigate(`/create?pIdx=${row.pIdx}`);
-    }
-  };
+  //create跳轉
+  const handleAdvancedEdit = (row) => {navigate(`/create?pIdx=${row.pIdx}`)};
 
   // --- 篩選狀態 ---
   const [searchText, setSearchText] = useState(""); 
@@ -510,11 +506,9 @@ export default function RunCardListPage() {
                                   cursor: 'pointer' 
                                 }}
                                 onClick={() => {
-                                  // 防呆提示
-                                  if (window.confirm(`Do you want to go to Check In/Out for QR: ${r.qr}?`)) {
                                     // 跳轉並帶入專案索引 pIdx
-                                    navigate(`/checkinout?pIdx=${r.pIdx}`);
-                                  }
+                                    navigate(`/checkinout?pIdx=${r.pIdx}&lIdx=${r.lIdx}`);
+                                  
                                 }}
                               >
                                 {r[col.key] || "(Empty QR)"}
