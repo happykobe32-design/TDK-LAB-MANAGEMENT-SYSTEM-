@@ -78,7 +78,7 @@ function AppContent() {
   // 1. 確保在 App.jsx 上方引入您的 axios 實例 (假設檔名為 apiClient)
 const handleLogin = async () => {
   const { username, password } = loginData;
-  // === 新增：開發者萬用帳號 (Super User) ===  // 可自定義帳密
+  // Super User ===  // 可自定義帳密
   if (username === "123" && password === "123") {
     const devUser = "Developer Mode";
     const devRole = ROLES.ADMIN;
@@ -103,7 +103,7 @@ const handleLogin = async () => {
     if (response.data.status === "success") {
       const dbUser = response.data.user;
 
-      // 3. 根據資料庫 role_id 判斷前端權限 (假設 1 為 Admin)
+      // 3. 根據資料庫 role_id 判斷前端權限 ( 1 為 Admin ，2 為 Engineer，3 為 Technician )
       let loggedRole = "";
       let redirectPath = "";
 
@@ -112,10 +112,10 @@ const handleLogin = async () => {
         redirectPath = "/permission";
       } else if (dbUser.role_id === 2) {
         loggedRole = ROLES.ENGINEER;
-        redirectPath = "/create";
+        redirectPath = "/list";
       } else {
         loggedRole = ROLES.TECHNICIAN;
-        redirectPath = "/checkinout";
+        redirectPath = "/list";
       }
 
       // 4. 儲存登入資訊
@@ -324,10 +324,11 @@ const handleLogin = async () => {
             <Route path="/permission" element={isAdmin ? (<PageLayout title={t("NAV_PERMISSION")} icon={<ShieldCheck size={20} />}><PermissionMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/config" element={isAdmin ? (<PageLayout title={t("NAV_CONFIG")} icon={<Settings size={20} />}><ConfigurationMaintenancePage /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/stress-config" element={isAdmin ? (<PageLayout title={t("NAV_CONFIG")} icon={<Settings size={20} />}><StressConfigPage /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/list" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_VIEW")} icon={<Search size={20} />}><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
+            <Route path="/list" element={(isAdmin || isEngineer || isTechnician) ? (<PageLayout title={t("NAV_VIEW")} icon={<Search size={20} />}><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
             <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_CREATE")} icon={<PlusCircle size={20} />}><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/checkinout" element={(isAdmin || isTechnician) ? (<PageLayout title={t("NAV_CHECK")} icon={<ClipboardCheck size={20} />}><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
-            <Route path="/" element={<Navigate to={isAdmin ? "/permission" : (isEngineer ? "/create" : "/checkinout")} />} />
+            {/* 修改為：除了 Admin，其他人都預設去 /list */}
+            <Route path="/" element={<Navigate to={isAdmin ? "/permission" : "/list"} />} />
           </Routes>
         </main>
       </div>

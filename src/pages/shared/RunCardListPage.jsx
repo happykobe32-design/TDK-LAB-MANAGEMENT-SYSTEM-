@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom"; // 跳轉
 
-export default function RunCardListPage() {
+export default function RunCardListPage({ runCards, userRole, handleEdit, handleDelete }) {
   const navigate = useNavigate(); // 初始化 navigate
   const [allData, setAllData] = useState([]);
   const [isDeleteMode, setIsDeleteMode] = useState(false);
@@ -380,36 +380,41 @@ export default function RunCardListPage() {
             <button className="action-button-custom btn-reset" onClick={handleReset}>⟳ Reset All</button>
             
             {/* --- 刪除模式控制開始 --- */}
-            {!isDeleteMode ? (
-              <button 
-                className="action-button-custom" 
-                style={{ borderColor: '#ef4444', color: '#ef4444' }}
-                onClick={() => setIsDeleteMode(true)}
-              >
-                🗑️ Delete 
-              </button>
-            ) : (
-              <div className="d-flex gap-2 animate-fade-in">
-                <button 
-                  className="btn btn-danger btn-sm shadow-sm"
-                  disabled={selectedIds.length === 0}
-                  onClick={() => {
-                    handleDeleteSelected();
-                    setIsDeleteMode(false); // 刪除完自動退出模式
-                  }}
-                >
-                  Confirm Delete ({selectedIds.length})
-                </button>
-                <button 
-                  className="btn btn-secondary btn-sm shadow-sm"
-                  onClick={() => {
-                    setIsDeleteMode(false);
-                    setSelectedIds([]); // 取消時清空勾選
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
+            {/* 修改點：只有非技術員才能看到刪除控制區 */}
+            {userRole !== 'technician' && (
+              <>
+                {!isDeleteMode ? (
+                  <button 
+                    className="action-button-custom" 
+                    style={{ borderColor: '#ef4444', color: '#ef4444' }}
+                    onClick={() => setIsDeleteMode(true)}
+                  >
+                    🗑️ Delete 
+                  </button>
+                ) : (
+                  <div className="d-flex gap-2 animate-fade-in">
+                    <button 
+                      className="btn btn-danger btn-sm shadow-sm"
+                      disabled={selectedIds.length === 0}
+                      onClick={() => {
+                        handleDeleteSelected();
+                        setIsDeleteMode(false); 
+                      }}
+                    >
+                      Confirm Delete ({selectedIds.length})
+                    </button>
+                    <button 
+                      className="btn btn-secondary btn-sm shadow-sm"
+                      onClick={() => {
+                        setIsDeleteMode(false);
+                        setSelectedIds([]); 
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </>
             )}
             {/* --- 刪除模式控制結束 --- */}
           </div>
@@ -474,7 +479,7 @@ export default function RunCardListPage() {
                       </th>
                     );
                   })}
-                  <th className="text-center" style={{ width: '60px' }}>Edit</th>
+                  {userRole !== 'technician' &&<th className="text-center" style={{ width: '60px' }}>Edit</th>}
                 </tr>
               </thead>
               <tbody>
@@ -525,19 +530,21 @@ export default function RunCardListPage() {
                           </td>
                         );
                       })}
-                      <td className="text-center">
-                        <div className="d-flex gap-2 justify-content-center">
-                          {/* 僅保留進階編輯：點擊跳轉回 Create 頁面 */}
-                          <button 
-                            className="btn-icon-action advanced-edit" 
-                            title="Advanced Edit (Add/Delete Steps)"
-                            style={{ color: '#3b82f6', fontSize: '15px' }} 
-                            onClick={() => handleAdvancedEdit(r)}
-                          >
-                            📝
-                          </button>
-                        </div>
-                      </td>
+                      {/* 修改點：單列的編輯按鈕根據權限隱藏 */}
+                      {userRole !== 'technician' && (
+                        <td className="text-center">
+                          <div className="d-flex gap-2 justify-content-center">
+                            <button 
+                              className="btn-icon-action advanced-edit" 
+                              title="Advanced Edit (Add/Delete Steps)"
+                              style={{ color: '#3b82f6', fontSize: '15px' }} 
+                              onClick={() => handleAdvancedEdit(r)}
+                            >
+                              📝
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
