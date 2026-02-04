@@ -17,8 +17,8 @@ const PermissionMaintenancePage = () => {
       const response = await apiClient.get("/users/");
       setUserData(response.data);
     } catch (error) {
-      console.error("抓取使用者失敗:", error);
-      alert("無法取得使用者資料");
+      console.error("Failed to retrieve user:", error); 
+      alert("無法取得使用者資料"); 
     } finally {
       setLoading(false);
     }
@@ -28,11 +28,19 @@ const PermissionMaintenancePage = () => {
     fetchUsers();
   }, []);
 
-  // 2. 處理權限變更並同步至後端
+  // 2. 處理權限變更並同步至後端 (已加入防呆機制)
   const handleRoleChange = async (userId, newRoleId, currentUserData) => {
+    // 【防呆機制】：二次確認變更
+    const roleNames = { 1: "Admin", 2: "Engineer", 3: "Technician" };
+    const confirmMsg = `Are you sure you want to change the permissions of user: [ ${currentUserData.user_name} ] role to [ ${roleNames[newRoleId]} ] ？`;
+    
+    if (!window.confirm(confirmMsg)) {
+        fetchUsers(); // 刷回原始數據，避免下拉選單狀態不一致
+        return;
+    }
+
     try {
       // 對應 users.py 中的 @router.put("/{user_id}")
-      // 根據 UserUpdate Schema，我們傳送要修改的欄位
       await apiClient.put(`/users/${userId}`, {
         user_name: currentUserData.user_name,
         email: currentUserData.email,
@@ -40,83 +48,95 @@ const PermissionMaintenancePage = () => {
         is_active: currentUserData.is_active
       });
       
-      alert(`使用者 ${currentUserData.user_name} 權限已更新`);
+      alert(`User: ${currentUserData.user_name} permissions have been updated`);
       fetchUsers(); // 重新整理清單
     } catch (error) {
-      console.error("更新失敗:", error);
-      alert("更新失敗：" + (error.response?.data?.detail || "網路連線異常"));
+      console.error("Update failed:", error); 
+      alert("Update failed: " + (error.response?.data?.detail || "Network error"));
+      fetchUsers(); // 發生錯誤時刷回原始數據
     }
   };
 
-  // 3. 處理移除帳號
+  // 3. 處理移除帳號 (已加入防呆機制)
   const handleDeleteUser = async (userId, userName) => {
-    if (!window.confirm(`確定要移除帳號 ${userName} 嗎？`)) return;
+    if (!window.confirm(`Are you sure you want to remove the account ${userName}?`)) return; 
     try {
       // 對應 users.py 中的 @router.delete("/{user_id}")
       await apiClient.delete(`/users/${userId}`);
-      alert("帳號已成功移除");
+      alert("Account has been successfully removed");
       fetchUsers();
     } catch (error) {
-      alert("移除失敗");
+      alert("Failed to remove account");
     }
   };
 
   // 定義表格欄位
   const columnDefs = [
-    { headerName: "ID", field: "user_id", width: 80 },
-    { headerName: "帳號名稱", field: "user_name", flex: 1 },
+    { headerName: "ID", field: "user_id", width: 80, sortable: true },
+    { headerName: "User_Name", field: "user_name", flex: 1, filter: true },
     { headerName: "Email", field: "email", flex: 1.5 },
     { 
-      headerName: "系統角色 (下拉修改)", 
+      headerName: "System Role (Dropdown Edit)", 
       field: "role_id",
       flex: 1.2,
       cellRenderer: (params) => (
         <select 
-          className="form-select form-select-sm mt-1"
+          className="form-select form-select-sm mt-1 border-primary-subtle"
           value={params.value || ""}
           onChange={(e) => handleRoleChange(params.data.user_id, parseInt(e.target.value), params.data)}
         >
-          <option value={1}>Admin (管理員)</option>
-          <option value={2}>Engineer (工程師)</option>
-          <option value={3}>Technician (技術員)</option>
+          <option value={1}>Admin</option>
+          <option value={2}>Engineer</option>
+          <option value={3}>Technician</option>
         </select>
       )
     },
     {
-      headerName: "操作",
-      width: 100,
+      headerName: "Operation",
+      width: 120,
       cellRenderer: (params) => (
         <button 
           className="btn btn-sm btn-outline-danger mt-1"
           onClick={() => handleDeleteUser(params.data.user_id, params.data.user_name)}
         >
-          移除
+          Remove
         </button>
       )
     }
   ];
 
   return (
-    <div className="card shadow-sm">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <h3 className="card-title mb-0">使用者權限維護</h3>
-          <button className="btn btn-primary btn-sm" onClick={fetchUsers}>重新整理</button>
+    <div className="container-fluid py-0">
+      <div className="card shadow-sm border-0 rounded-0">
+        {/* 表頭區 */}
+        <div className="card-header bg-white py-0">
+          <div className="d-flex justify-content-between align-items-center">
+            <button className="btn btn-outline-primary btn-sm px-2" onClick={fetchUsers}>
+              ⟳ Refresh
+            </button>
+          </div>
         </div>
 
-        {loading ? (
-          <div className="text-center py-5">讀取中...</div>
-        ) : (
-          <div className="ag-theme-alpine" style={{ height: 500, width: '100%' }}>
-            <AgGridReact
-              rowData={userData}
-              columnDefs={columnDefs}
-              pagination={true}
-              paginationPageSize={10}
-              rowHeight={50}
-            />
-          </div>
-        )}
+        {/* 表格內容區 */}
+        <div className="card-body">
+          {loading ? (
+            <div className="text-center py-5">
+              <div className="spinner-border text-primary text-sm" role="status"></div>
+              <div className="mt-2 text-muted">Loading Data...</div>
+            </div>
+          ) : (
+            <div className="ag-theme-alpine shadow-none" style={{ height: 600, width: '100%' }}>
+              <AgGridReact
+                rowData={userData}
+                columnDefs={columnDefs}
+                pagination={true}
+                paginationPageSize={30}
+                rowHeight={55}
+                animateRows={true}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

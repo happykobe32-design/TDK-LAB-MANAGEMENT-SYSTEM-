@@ -21,19 +21,17 @@ export default function CheckInOutPage() {
 
     const params = new URLSearchParams(location.search);
     const pIdxParam = params.get("pIdx");
-    const lIdxParam = params.get("lIdx"); // technician跳轉邏輯:QR+Lot 獲取特定的 Lot 索引
+    const lIdxParam = params.get("lIdx");
     const lastViewedId = localStorage.getItem("last_viewed_project_id");
 
     if (data.length > 0) {
-      setAllProjects(data); // 始終載入完整數據，避免表格抓不到資料
+      setAllProjects(data);
 
       if (pIdxParam !== null) {
         const targetProject = data[parseInt(pIdxParam)];
         if (targetProject) {
           setSelectedId(targetProject.id);
           localStorage.setItem("last_viewed_project_id", targetProject.id);
-          
-          // ✅ 核心：如果是從 QR 跳轉過來的，強制設定該 Lot 為當前分頁
           if (lIdxParam !== null) {
             setActiveLotTab(parseInt(lIdxParam));
           }
@@ -41,7 +39,6 @@ export default function CheckInOutPage() {
         }
       }
 
-      // 一般進入流程
       if (lastViewedId) {
         const exists = data.find(p => p.id === lastViewedId);
         if (exists) { setSelectedId(lastViewedId); return; }
@@ -91,7 +88,6 @@ export default function CheckInOutPage() {
               : l
           );
           const allRows = updatedLots.flatMap((l) => l.stresses.flatMap((s) => s.rowData));
-          // 💡 修改這裡：檢查是否全部完成 (包括被跳過的)
           const isAllDone = allRows.length > 0 && allRows.every((r) => 
             (r.endTime && r.endTime !== "") || r.endTime === "SKIPPED"
           );
@@ -99,9 +95,7 @@ export default function CheckInOutPage() {
           let newStatus = isAllDone ? "completed" : (isAnyStarted ? "in-process" : "Init");
           return { ...p, lots: updatedLots, status: newStatus };
         });
-        // ✅ 輸入即存檔
         localStorage.setItem("all_projects", JSON.stringify(updated));
-
         return updated;
       });
     },
@@ -112,13 +106,22 @@ export default function CheckInOutPage() {
     const isProjectCompleted = currentProject?.status === "completed";
     const canEdit = !isProjectCompleted;
 
+    // ✅ 修改這裡：日期時間在第一行，名字在第二行
+    const getCurrentInfo = () => {
+      const userName = sessionStorage.getItem("logged_user") || "Unknown";
+      const now = new Date();
+      // 第一行：2025/2/3 14:25
+      const timeStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      // 回傳兩行字串，中間用 \n 分隔
+      return `${timeStr}\n(${userName})`;
+    };
+
     return [
       {
         headerName: "STATUS",
         width: 65,
         pinned: "left",
         valueGetter: (params) => {
-          // 邏輯：只要 endTime 或 startTime 是 "SKIPPED"，狀態就是 Skipped
           if (params.data.endTime === "SKIPPED" || params.data.startTime === "SKIPPED") return "Skipped";
           if (params.data.endTime) return "Completed";
           if (params.data.startTime) return "In-Process";
@@ -126,7 +129,7 @@ export default function CheckInOutPage() {
         },
         cellRenderer: (params) => {
           const status = params.value;
-          let color = "#727a84ff"; // Init (Slate 500)
+          let color = "#727a84ff"; 
           let bgColor = "#c2cad1ff";          
           if (status === "Skipped") {color = "#76808eff"; bgColor = "#f8fafc"; } 
           else if (status === "In-Process") {color = "#b45309";bgColor = "#fef3c7"; } 
@@ -173,29 +176,36 @@ export default function CheckInOutPage() {
       {
         headerName: "CHECK-IN",
         field: "startTime",
-        width: 120,
+        width: 125, // 稍微調寬一點以容納完整日期時間
         cellRenderer: (params) => {
           const rowIndex = params.node.rowIndex;
           const isSkipped = params.data.startTime === "SKIPPED";
-          
-          // 💡 關鍵邏輯：檢查前一步是否完成 或 被跳過
           const prevRow = rowIndex > 0 ? params.api.getDisplayedRowAtIndex(rowIndex - 1)?.data : null;
           const isPrevStepDone = rowIndex === 0 || (!!prevRow?.endTime && prevRow?.endTime !== "");
 
           if (isSkipped) return <div style={{ textAlign: "center", color: "#cbd5e1", fontSize: "10px", fontWeight: "bold" }}>SKIPPED</div>;
 
-          const isDone = !!params.value;
+          if (params.value) {
+            const parts = String(params.value).split('\n');
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: '1.2', width: '100%' }}>
+                <span style={{ color: '#64748b', fontSize: '9px', whiteSpace: 'nowrap' }}>{parts[0]}</span>
+                <span style={{ color: '#1e3a8a', fontSize: '10px', fontWeight: 'bold' }}>{parts[1] || ""}</span>
+              </div>
+            );
+          }
+
           return (
             <button
-              disabled={!!params.value || !isPrevStepDone || isSkipped}
-              className={`op-button ${params.value ? "done" : (isPrevStepDone ? "start" : "waiting")}`}
+              disabled={!isPrevStepDone}
+              className={`op-button ${isPrevStepDone ? "start" : "waiting"}`}
               onClick={() => {
                 if (window.confirm("Are you sure you want to START?")) {
-                  syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { startTime: new Date().toLocaleString([], { hour12: false }) });
+                  syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { startTime: getCurrentInfo() });
                 }
               }}
             >
-              {isSkipped ? "SKIPPED" : (params.value || (isPrevStepDone ? "▶ START" : "🔒"))}
+              {isPrevStepDone ? "▶ START" : "🔒"}
             </button>
           );
         },
@@ -203,24 +213,33 @@ export default function CheckInOutPage() {
       {
         headerName: "CHECK-OUT",
         field: "endTime",
-        width: 120,
+        width: 125,
         cellRenderer: (params) => {
           const isSkipped = params.data.endTime === "SKIPPED";
           if (isSkipped) return <div style={{ textAlign: "center", color: "#cbd5e1", fontSize: "10px", fontWeight: "bold" }}>SKIPPED</div>;
 
-          const canFinish = !!params.data.startTime && params.data.startTime !== "SKIPPED" && !params.value;
-          const isDone = !!params.value;
+          if (params.value) {
+            const parts = String(params.value).split('\n');
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: '1.2', width: '100%' }}>
+                <span style={{ color: '#64748b', fontSize: '9px', whiteSpace: 'nowrap' }}>{parts[0]}</span>
+                <span style={{ color: '#1e3a8a', fontSize: '10px', fontWeight: 'bold' }}>{parts[1] || ""}</span>
+              </div>
+            );
+          }
+
+          const canFinish = !!params.data.startTime && params.data.startTime !== "SKIPPED";
           return (
             <button
-              disabled={!params.data.startTime || !!params.value || isSkipped}
-              className={`op-button ${params.value ? "done" : (canFinish ? "finish" : "waiting")}`}
+              disabled={!canFinish}
+              className={`op-button ${canFinish ? "finish" : "waiting"}`}
               onClick={() => {
                 if (window.confirm("Are you sure you want to FINISH?")) {
-                  syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { endTime: new Date().toLocaleString([], { hour12: false }) });
+                  syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { endTime: getCurrentInfo() });
                 }
               }}
             >
-              {isSkipped ? "SKIPPED" : (params.value || "■ FINISH")}
+              ■ FINISH
             </button>
           );
         }
@@ -239,7 +258,6 @@ export default function CheckInOutPage() {
         editable: (p) => canEdit && p.data.startTime !== "SKIPPED",
         cellStyle: (params) => ({ background: params.data.startTime === "SKIPPED" ? "#ffffffff" : (canEdit ? "#fefce8" : "#fff") }) 
       },
-      
     ];
   }, [syncUpdate, currentProject]);
 
@@ -284,17 +302,11 @@ export default function CheckInOutPage() {
           
           {renderHeaderExcel()}
 
-          {/* 渲染 Lot Tabs */}
           <div style={{ display: "flex", gap: "2px", paddingLeft: "0px" }}>
             {currentProject.lots.map((lot, idx) => {
-              // --- 隱藏邏輯：檢查 URL 是否有指定特定的 lIdx ---
               const params = new URLSearchParams(window.location.search);
               const lIdxParam = params.get("lIdx");
-              
-              // 如果 URL 指定了 lIdx，且目前這個 Tab 不是該索引，就不顯示
-              if (lIdxParam !== null && idx !== parseInt(lIdxParam)) {
-                return null;
-              }
+              if (lIdxParam !== null && idx !== parseInt(lIdxParam)) return null;
 
               return (
                 <div 
@@ -329,10 +341,9 @@ export default function CheckInOutPage() {
                   columnDefs={columnDefs}
                   context={{ lotId: activeLot.id, stressId: s.id }}
                   headerHeight={25}
-                  rowHeight={32}
+                  rowHeight={42} // 稍微加高 Row 以容納兩行文字
                   domLayout="autoHeight"
                   getRowId={getRowId}
-                  // 💡 加入這個屬性
                   getRowStyle={(params) => {
                     if (params.data.startTime === "SKIPPED") {
                       return { backgroundColor: "#ffffffff" };
@@ -348,46 +359,27 @@ export default function CheckInOutPage() {
       )}
 
       <style>{`
-        .custom-grid { 
-          box-sizing: border-box;
-        }
-        .custom-grid .ag-header { 
-          background-color: #334155 !important; 
-          border-bottom: 1px solid #1e293b !important;
-        }
-          /*表頭*/ 
+        .custom-grid { box-sizing: border-box; }
+        .custom-grid .ag-header { background-color: #334155 !important; border-bottom: 1px solid #1e293b !important; }
         .custom-grid .ag-header-cell-label { 
-          color: #ffffff !important; 
-          font-size: 9px; 
-          font-weight: 700; 
-          justify-content: center; 
-          letter-spacing: 0.05em;
+          color: #ffffff !important; font-size: 9px; font-weight: 700; 
+          justify-content: center; letter-spacing: 0.05em;
         }
-        /*表格內*/  
         .custom-grid .ag-cell { 
-          font-size: 10px;
-          padding: 2px 4px !important; /* 減少左右內邊距 */ 
-          line-height: 1.1 !important;
-          border-right: 1px solid #b5b9bcff !important; 
-          display: flex; 
-          align-items: center; 
-          color: #000000ff;
+          font-size: 10px; padding: 2px 4px !important; 
+          line-height: 1.1 !important; border-right: 1px solid #b5b9bcff !important; 
+          display: flex; align-items: center; color: #000000ff;
         }
         .custom-grid .ag-row { border-bottom: 1px solid #b5b9bcff !important; }
-        
         .op-button { 
           width: 100%; height: 25px; border: none; border-radius: 4px; 
           font-weight: 800; font-size: 10px; cursor: pointer; transition: all 0.2s;
         }
         .op-button.start { background: #2563eb; color: #fff; box-shadow: 0 2px 4px rgba(37,99,235,0.2); }
         .op-button.start:hover { background: #1d4ed8; }
-        
         .op-button.finish { background: #059669; color: #fff; box-shadow: 0 2px 4px rgba(5,150,105,0.2); }
         .op-button.finish:hover { background: #047857; }
-        
-        .op-button.done { background: transparent; color: #94a3b8; border: 1px solid #e2e8f0; cursor: default; }
         .op-button.waiting { background: transparent; color: #cbd5e1; border: 1px dashed #e2e8f0; cursor: not-allowed; }
-
       `}</style>
     </div>
   );

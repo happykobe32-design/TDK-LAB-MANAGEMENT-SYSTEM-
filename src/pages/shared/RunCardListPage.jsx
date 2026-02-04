@@ -618,7 +618,7 @@ export default function RunCardListPage({ runCards, userRole, handleEdit, handle
 
           /* 時間文字顏色與狀態標籤 (Status Tag) 樣式 */
           .check-time-text { color: #3a2cf2ff !important; font-family: monospace; }
-          .status-tag { padding: 3px 10px; border-radius: 12px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+          .status-tag { padding: 1px 5px; border-radius: 6px; font-size: 9px; font-weight: 800; text-transform: uppercase; }
           .status-tag.completed { background: #dcfce7; color: #166534; }
           .status-tag.in-process { background: #faf4b1ff; color: #854d0e; }
           .status-tag.init { background: #a2a9b1ff; color: #475569; }

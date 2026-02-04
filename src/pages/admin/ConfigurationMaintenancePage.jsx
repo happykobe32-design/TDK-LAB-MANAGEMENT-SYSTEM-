@@ -1,144 +1,143 @@
-import { useEffect, useState } from "react";
-import { FaTrashAlt, FaEdit, FaPlus, FaCogs, FaDatabase } from "react-icons/fa"; 
+import { useEffect, useState, useCallback } from "react";
+import { FaTrashAlt, FaEdit, FaPlus, FaDatabase } from "react-icons/fa"; 
+import axios from "axios";
 
-const EMPTY_MASTER = {
-  productFamilies: [],
-  products: [],
-};
+// API 基礎路徑 (結尾不帶斜線)
+const API_BASE = "http://localhost:9000/products"; 
 
 export default function ConfigurationMaintenancePage() {
-  const [master, setMaster] = useState(EMPTY_MASTER);
+  const [products, setProducts] = useState([]); 
   const [showFamilyInput, setShowFamilyInput] = useState(false);
   const [newFamilyName, setNewFamilyName] = useState("");
   const [editingProduct, setEditingProduct] = useState(null);
-  const [filterFamilyId, setFilterFamilyId] = useState("ALL");
+  const [filterFamily, setFilterFamily] = useState("ALL");
 
-  // 1. 載入資料 (LocalStorage)
-  useEffect(() => {
-    const saved = localStorage.getItem("config_master");
-    if (saved) {
-      try { setMaster(JSON.parse(saved)); } catch (e) { console.error(e); }
+  // --- 1. 從後端載入資料 ---
+  const fetchProducts = useCallback(async () => {
+    try {
+      // 確保路徑正確
+      const res = await axios.get(`${API_BASE}/`, { params: { limit: 1000 } });
+      setProducts(res.data);
+    } catch (e) {
+      console.error("Failed to fetch products:", e);
+      alert("無法讀取資料庫，請檢查後端服務");
     }
   }, []);
 
-  // 2. 儲存資料
-  const saveMaster = (next) => {
-    setMaster(next);
-    localStorage.setItem("config_master", JSON.stringify(next));
-  };
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
-  // --- Family Logic ---
+  // --- 2. 提取唯一的 Family List ---
+  const productFamilies = [...new Set(products.map(p => p.product_family).filter(Boolean))];
+
+  // --- 3. Family Logic ---
   const handleAddFamily = () => {
     if (!newFamilyName.trim()) return;
-    const next = {
-      ...master,
-      productFamilies: [...master.productFamilies, { id: "PF_" + Date.now(), name: newFamilyName.trim() }]
-    };
-    saveMaster(next);
+    setFilterFamily(newFamilyName.trim());
     setNewFamilyName("");
     setShowFamilyInput(false);
   };
 
-  const deleteFamily = (id, e) => {
-    e.stopPropagation();
-    if (!window.confirm("Delete this family and all associated products?")) return;
-    saveMaster({
-      ...master,
-      productFamilies: master.productFamilies.filter(f => f.id !== id),
-      products: master.products.filter(p => p.familyId !== id)
-    });
-    if (filterFamilyId === id) setFilterFamilyId("ALL");
-  };
-
-  // --- Product Logic ---
+  // --- 4. Product Logic (CRUD) ---
   const openProductModal = (product = null) => {
     if (product) {
       setEditingProduct({ ...product });
     } else {
       setEditingProduct({
-        id: "P_" + Date.now(),
-        familyId: filterFamilyId !== "ALL" ? filterFamilyId : "",
-        productName: "",
+        product_family: filterFamily !== "ALL" ? filterFamily : "",
+        product_name: "",
+        is_active: true
+        // 移除資料庫不存在的欄位
       });
     }
   };
 
-  const deleteProduct = (id) => {
-    if (!window.confirm("Delete this product?")) return;
-    saveMaster({
-      ...master,
-      products: master.products.filter(p => p.id !== id)
-    });
+  const handleSaveProduct = async () => {
+    if (!editingProduct.product_family || !editingProduct.product_name) {
+      return alert("請填寫必填欄位");
+    }
+
+    try {
+      // 重要：根據資料庫結構，我們只傳送需要的欄位
+      const payload = {
+        product_family: editingProduct.product_family,
+        product_name: editingProduct.product_name,
+        is_active: editingProduct.is_active
+      };
+
+      if (editingProduct.id) { // 注意這裡改用 id
+        await axios.put(`${API_BASE}/${editingProduct.id}`, payload);
+      } else {
+        await axios.post(`${API_BASE}/`, payload);
+      }
+      setEditingProduct(null);
+      fetchProducts(); 
+    } catch (e) {
+      console.error("Save failed:", e);
+      alert("儲存失敗，請檢查欄位格式或後端 Log");
+    }
   };
 
-  const handleSaveProduct = () => {
-    if (!editingProduct.familyId || !editingProduct.productName) return alert("Required fields missing");
-    const exists = master.products.find(p => p.id === editingProduct.id);
-    const nextProducts = exists
-      ? master.products.map(p => p.id === editingProduct.id ? editingProduct : p)
-      : [...master.products, editingProduct];
-
-    saveMaster({ ...master, products: nextProducts });
-    setEditingProduct(null);
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm("確定要刪除此產品？")) return;
+    try {
+      await axios.delete(`${API_BASE}/${id}`); // 使用正確的 id
+      fetchProducts(); 
+    } catch (e) {
+      console.error("Delete failed:", e);
+      alert("刪除失敗");
+    }
   };
 
-  const filteredProducts = filterFamilyId === "ALL" 
-    ? master.products 
-    : master.products.filter(p => p.familyId === filterFamilyId);
+  const filteredProducts = filterFamily === "ALL" 
+    ? products 
+    : products.filter(p => p.product_family === filterFamily);
 
   return (
     <div className="container-fluid py-2 px-3" style={{ backgroundColor: "#fbfbfb", minHeight: "100vh" }}>
       
-      {/* Small Label Header */}
       <div className="mb-2 px-1 border-bottom pb-1">
         <div className="d-flex align-items-center gap-2">
           <span className="text-muted fw-bold" style={{ fontSize: '1rem', letterSpacing: '1px' }}>
-            PRODUCT SETTINGS
+            PRODUCT SETTINGS (Connected to DB)
           </span>
         </div>
       </div>
 
       <div className="row g-2">
-        {/* Left Side: Product Family List */}
+        {/* Left Side: Family List */}
         <div className="col-lg-3 col-md-4">
           <div className="card shadow-sm border-0 rounded-1">
             <div className="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center">
-              <span className="small fw-bold text-secondary">PRODUCT FAMILY LIST</span>
-              <button className="btn btn-xs btn-outline-primary py-0 px-2" style={{ fontSize: '0.7rem' }} onClick={() => setShowFamilyInput(true)}>
-                <FaPlus className="me-0" />ADD
+              <span className="small fw-bold text-secondary">PRODUCT FAMILY</span>
+              <button className="btn btn-xs btn-outline-primary py-0 px-2" onClick={() => setShowFamilyInput(true)}>
+                <FaPlus size={10} /> ADD
               </button>
             </div>
             <div className="card-body p-0 overflow-auto" style={{ maxHeight: '75vh' }}>
               <table className="table table-hover mb-0" style={{ fontSize: '0.85rem' }}>
                 <tbody>
                   <tr 
-                    className={filterFamilyId === "ALL" ? "table-primary" : ""}
-                    onClick={() => setFilterFamilyId("ALL")}
+                    className={filterFamily === "ALL" ? "table-primary" : ""}
+                    onClick={() => setFilterFamily("ALL")}
                     style={{ cursor: "pointer" }}
                   >
                     <td className="ps-3 py-2 fw-bold text-primary">All Families</td>
-                    <td></td>
                   </tr>
-                  {master.productFamilies.map(f => (
+                  {productFamilies.map(name => (
                     <tr 
-                      key={f.id} 
-                      onClick={() => setFilterFamilyId(f.id)} 
+                      key={name} 
+                      onClick={() => setFilterFamily(name)} 
                       style={{ cursor: "pointer" }}
-                      className={filterFamilyId === f.id ? "table-primary" : ""}
+                      className={filterFamily === name ? "table-primary" : ""}
                     >
-                      <td className="ps-3 py-2">{f.name}</td>
-                      <td className="text-end pe-3">
-                        <FaTrashAlt 
-                          size={12} 
-                          className="text-danger opacity-50 hover-opacity-100" 
-                          onClick={(e) => deleteFamily(f.id, e)} 
-                        />
-                      </td>
+                      <td className="ps-3 py-2">{name}</td>
                     </tr>
                   ))}
                   {showFamilyInput && (
                     <tr className="table-warning">
-                      <td className="p-2" colSpan="2">
+                      <td className="p-2">
                         <div className="input-group input-group-sm">
                           <input className="form-control" value={newFamilyName} onChange={e => setNewFamilyName(e.target.value)} placeholder="New Family Name..." autoFocus />
                           <button className="btn btn-success" onClick={handleAddFamily}>OK</button>
@@ -152,13 +151,13 @@ export default function ConfigurationMaintenancePage() {
           </div>
         </div>
 
-        {/* Right Side: Product Data Grid (Excel Style) */}
+        {/* Right Side: Product Grid */}
         <div className="col-lg-9 col-md-8">
           <div className="card shadow-sm border-0 rounded-1 overflow-hidden">
             <div className="card-header bg-white py-2 d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2">
                 <FaDatabase size={14} className="text-muted" />
-                <span className="fw-bold small">PRODUCT LIST</span>
+                <span className="fw-bold small">PRODUCT LIST ({filteredProducts.length})</span>
               </div>
               <button className="btn btn-primary btn-sm px-3 shadow-sm" onClick={() => openProductModal()}>
                 <FaPlus className="me-1" /> Add Product
@@ -170,31 +169,26 @@ export default function ConfigurationMaintenancePage() {
                 <thead style={{ backgroundColor: "#f1f5f9" }}>
                   <tr className="text-secondary fw-bold" style={{ fontSize: '0.75rem' }}>
                     <th style={{ width: "60px" }}>NO</th>
-                    <th className="text-start ps-3">PRODUCT FAMILY</th>
+                    <th className="text-start ps-3">FAMILY</th>
                     <th className="text-start ps-3">PRODUCT NAME</th>
-                    <th style={{ width: "70px" }}></th>
+                    {/* USER 欄位已移除 */}
+                    <th style={{ width: "100px" }}>ACTION</th>
                   </tr>
                 </thead>
                 <tbody style={{ fontSize: '0.85rem' }}>
-                  {filteredProducts.length > 0 ? (
-                    filteredProducts.map((p, index) => (
-                      <tr key={p.id}>
-                        <td className="bg-light fw-bold text-muted small">{index + 1}</td>
-                        <td className="text-start ps-3 text-muted">{master.productFamilies.find(f => f.id === p.familyId)?.name}</td>
-                        <td className="text-start ps-3 fw-bold text-primary">{p.productName}</td>
-                        <td>
-                          <div className="d-flex justify-content-center gap-3">
-                            <FaEdit className="text-secondary cursor-pointer hover-text-primary" size={14} onClick={() => openProductModal(p)} title="Edit" />
-                            <FaTrashAlt className="text-danger opacity-75 cursor-pointer hover-opacity-100" size={14} onClick={() => deleteProduct(p.id)} title="Delete" />
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan="4" className="py-4 text-muted small italic">No product data found in this category.</td>
+                  {filteredProducts.map((p, index) => (
+                    <tr key={p.id}> {/* 改用 p.id */}
+                      <td className="bg-light fw-bold text-muted small">{index + 1}</td>
+                      <td className="text-start ps-3 text-muted">{p.product_family}</td>
+                      <td className="text-start ps-3 fw-bold text-primary">{p.product_name}</td>
+                      <td>
+                        <div className="d-flex justify-content-center gap-3">
+                          <FaEdit className="text-secondary cursor-pointer" size={14} onClick={() => openProductModal(p)} />
+                          <FaTrashAlt className="text-danger opacity-75 cursor-pointer" size={14} onClick={() => handleDeleteProduct(p.id)} /> {/* 改用 p.id */}
+                        </div>
+                      </td>
                     </tr>
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -202,26 +196,33 @@ export default function ConfigurationMaintenancePage() {
         </div>
       </div>
 
-      {/* Simplified Product Modal */}
+      {/* Modal */}
       {editingProduct && (
         <div className="modal d-block shadow" style={{ backgroundColor: "rgba(0,0,0,0.4)", zIndex: 1050 }}>
           <div className="modal-dialog modal-sm modal-dialog-centered">
-            <div className="modal-content border-0 rounded-2 shadow">
+            <div className="modal-content border-0 rounded-2">
               <div className="modal-header bg-light py-2">
-                <span className="fw-bold small">Product Config</span>
+                <span className="fw-bold small">{editingProduct.id ? "Edit Product" : "New Product"}</span>
                 <button className="btn-close" style={{ fontSize: '0.6rem' }} onClick={() => setEditingProduct(null)}></button>
               </div>
               <div className="modal-body p-3">
                 <div className="mb-2">
                   <label className="small fw-bold text-muted mb-1">Family</label>
-                  <select className="form-select form-select-sm" value={editingProduct.familyId} onChange={e => setEditingProduct({...editingProduct, familyId: e.target.value})}>
-                    <option value="">-- Select --</option>
-                    {master.productFamilies.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                  </select>
+                  <input 
+                    className="form-control form-control-sm" 
+                    value={editingProduct.product_family || ""} 
+                    onChange={e => setEditingProduct({...editingProduct, product_family: e.target.value})} 
+                    placeholder="e.g. Motion"
+                  />
                 </div>
                 <div>
                   <label className="small fw-bold text-muted mb-1">Product Name</label>
-                  <input className="form-control form-control-sm" value={editingProduct.productName} onChange={e => setEditingProduct({...editingProduct, productName: e.target.value})} placeholder="e.g. Model X" />
+                  <input 
+                    className="form-control form-control-sm" 
+                    value={editingProduct.product_name || ""} 
+                    onChange={e => setEditingProduct({...editingProduct, product_name: e.target.value})} 
+                    placeholder="e.g. XAN" 
+                  />
                 </div>
               </div>
               <div className="modal-footer bg-light py-1 border-0">
