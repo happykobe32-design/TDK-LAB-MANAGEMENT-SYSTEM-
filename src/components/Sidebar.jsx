@@ -154,7 +154,7 @@ const Sidebar = ({ sidebarOpen,
             </li>
           )}
 
-          {(isAdmin || isTechnician) && (
+          {(isAdmin || isEngineer || isTechnician) && (
             <li style={navItemStyle("/checkinout")}>
               <button 
                 className={`btn w-100 text-start px-4 h-100 d-flex align-items-center border-0 shadow-none nav-btn-hover ${isActive("/checkinout") ? "fw-bold" : ""}`} 

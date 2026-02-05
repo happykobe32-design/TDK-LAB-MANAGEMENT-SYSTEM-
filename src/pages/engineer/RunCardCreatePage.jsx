@@ -167,6 +167,7 @@ const EditableDropdown = ({ value, options, onChange, placeholder, disabled }) =
 };
 
 export default function RunCardFormPage({ handleFinalSubmit }) {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const pIdx = queryParams.get("pIdx"); // 獲取網址上的索引
@@ -181,6 +182,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   };
 
   const [header, setHeader] = useState(initialHeader);
+  const [editingStressId, setEditingStressId] = useState(null); // 追蹤哪一個 Stress 正在被編輯
   const [configMaster, setConfigMaster] = useState({ productFamilies: [], products: [] });
   const [stressMeta, setStressMeta] = useState({});
   const [templates, setTemplates] = useState([]); 
@@ -193,11 +195,16 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     programName: "", testProgram: "", testScript: "",
   });
 
-  const createInitialLot = () => ({
+  const createInitialLot = () => {
+  const firstStressId = "str_" + Date.now(); // 先建立第一個 Stress 的 ID
+  return {
     id: "lot_" + Date.now(),
     lotId: "",
-    stresses: [{ id: "str_" + Date.now(), rowData: [newRow()] }],
-  });
+    // 初始化時就給它一個預設 Stress 分頁
+    stresses: [{ id: firstStressId, stressName: "ALT", rowData: [newRow()] }],
+    activeStressId: firstStressId, // <--- 新增這行：追蹤目前選中的 Stress
+  };
+};
 
   const [lots, setLots] = useState([createInitialLot()]);
   const [activeLotId, setActiveLotId] = useState(lots[0].id);
@@ -217,13 +224,27 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         setStressMeta(map);
       });
 
-    const savedConfig = localStorage.getItem("config_master");
-    if (savedConfig) {
-      try {
-        const parsed = JSON.parse(savedConfig);
-        setConfigMaster({ productFamilies: parsed.productFamilies || [], products: parsed.products || [] });
-      } catch (e) { console.error(e); }
-    }
+    // --- 加入這段新邏輯 (從資料庫獲取) ---
+    fetch("http://localhost:9000/products/")
+      .then(res => res.json())
+      .then(dbData => {
+        // 1. 提取唯一的 Family 名稱，格式化成下拉選單需要的結構
+        const uniqueFamilies = [...new Set(dbData.map(p => p.product_family))].filter(Boolean).map(f => ({
+          id: f, 
+          name: f
+        }));
+
+        // 2. 處理產品列表，對應 familyId
+        const products = dbData.map(p => ({
+          id: p.id,
+          familyId: p.product_family,
+          productName: p.product_name,
+        }));
+
+        setConfigMaster({ productFamilies: uniqueFamilies, products: products });
+      })
+      .catch(err => console.error("Database sync failed:", err));
+
     const savedTemplates = JSON.parse(localStorage.getItem("runcard_templates") || "[]");
     setTemplates(savedTemplates);
 
@@ -243,6 +264,26 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
   // 3. 操作邏輯
   const addLot = () => { const newLot = createInitialLot(); setLots((p) => [...p, newLot]); setActiveLotId(newLot.id); };
+  // 新增：切換特定 Lot 下的 Stress 分頁
+  const switchStress = (lotId, stressId) => {
+    setLots(prev => prev.map(l => 
+      l.id === lotId ? { ...l, activeStressId: stressId } : l
+    ));
+  };
+
+  // 新增：在特定 Lot 下新增一個 Stress 分頁
+  const addStressToLot = (lotId) => {
+    const newStress = { 
+      id: "str_" + Date.now() + Math.random(), 
+      stressName: "New Stress", 
+      rowData: [newRow()] 
+    };
+    setLots(prev => prev.map(l => 
+      l.id === lotId 
+        ? { ...l, stresses: [...l.stresses, newStress], activeStressId: newStress.id } 
+        : l
+    ));
+  };
   const deleteLot = (lotId) => { if (lots.length === 1) return alert("至少需保留一個 LOT"); const remain = lots.filter((l) => l.id !== lotId); setLots(remain); setActiveLotId(remain[0].id); };
   
   const duplicateLot = (lot) => {
@@ -269,19 +310,53 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     setLots((prev) => prev.map((l) => l.id === lotId ? { ...l, stresses: l.stresses.map((s) => s.id === stressId ? { ...s, rowData: newOrder } : s) } : l));
   };
 
-  const saveAsTemplate = (lot) => {
-    const name = window.prompt("Please enter the template name:"); if (!name) return;
-    const newT = { name, stresses: lot.stresses.map(s => ({ rowData: s.rowData.map(({ _rid, ...p }) => p) })) };
-    const updated = [...templates, newT]; setTemplates(updated); localStorage.setItem("runcard_templates", JSON.stringify(updated)); alert("✅ Template saved!");
+  // 1. 儲存模板：確保傳入的是當前選中的 Stress 物件
+  const saveAsTemplate = (stress) => {
+    if (!stress || !stress.rowData) {
+      alert("No data to save!");
+      return;
+    }
+
+    const name = window.prompt("Enter template name for this Stress:", stress.stressName || "");
+    if (!name) return;
+
+    // 格式標準化：只存 rowData (步驟)，不存 ID
+    const newTemplate = { 
+      name: name, 
+      id: "tpl_" + Date.now(),
+      isSingleStress: true, // 標記這是單一 Stress 的模板
+      steps: stress.rowData.map(({ _rid, ...p }) => p) 
+    };
+
+    const updated = [...templates, newTemplate];
+    setTemplates(updated);
+    localStorage.setItem("runcard_templates", JSON.stringify(updated));
+    alert(`✅ Template "${name}" saved!`);
   };
 
   const applyTemplate = (lotId, template) => {
-    setLots((prev) => prev.map((l) => l.id === lotId ? { ...l, stresses: template.stresses.map(s => ({ 
-      id: "str_" + Date.now() + "_" + Math.random().toString(16).slice(2), 
-      rowData: s.rowData.map(r => ({ ...r, _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2) })) 
-    })) } : l));
-    setShowTplList(null);
-  };
+  setLots((prev) => prev.map((l) => {
+    if (l.id !== lotId) return l;
+
+    // 找到當前選中的那個 Stress 並更新它的 rowData
+    const updatedStresses = l.stresses.map((s) => {
+      if (s.id === l.activeStressId) {
+        return {
+          ...s,
+          // 如果模板是新的單一格式就用 .steps，舊格式就相容處理
+          rowData: (template.steps || template.stresses[0].rowData).map(r => ({
+            ...r,
+            _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2)
+          }))
+        };
+      }
+      return s;
+    });
+
+    return { ...l, stresses: updatedStresses };
+  }));
+  setShowTplList(null);
+};
 
   const deleteTemplateAction = (idx) => {
     if (window.confirm(`Are you sure you want to delete "${templates[idx].name}"?`)) {
@@ -310,6 +385,20 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     for (let field of requiredFields) {
       if (!header[field]) return alert(`⚠️ Please fill in ${field}`);
     }
+    
+  const deleteStress = (lotId, stressId) => {
+  if (!window.confirm("Delete this Stress?")) return;
+  setLots(prev => prev.map(l => {
+    if (l.id !== lotId) return l;
+    const remaining = l.stresses.filter(s => s.id !== stressId);
+    return { 
+      ...l, 
+      stresses: remaining,
+      // 如果刪掉的是當前的，就自動跳到第一個
+      activeStressId: l.activeStressId === stressId ? (remaining[0]?.id || null) : l.activeStressId
+    };
+  }));
+};
 
     const isEditMode = pIdx !== null;
     const confirmMsg = isEditMode 
@@ -359,8 +448,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
   // 5. AG Grid Columns
   const columnDefs = useMemo(() => [
-    { 
-      headerName: "Stress", field: "stress", width: 160, rowDrag: true, 
+    { headerName: "Stress", field: "stress", width: 160, rowDrag: true, 
       cellRenderer: (p) => (
         <EditableDropdown 
           value={p.value} 
@@ -370,15 +458,13 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         />
       ),
     },
-    { 
-      headerName: "Type", field: "type", width: 140, 
+    { headerName: "Type", field: "type", width: 140, 
       cellRenderer: (p) => {
         const types = [...new Set((stressMeta[p.data.stress] || []).map(r => r.Type).filter(Boolean))];
         return <EditableDropdown value={p.value} options={types} placeholder="-- Type --" disabled={!p.data.stress} onChange={(val) => updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { type: val, operation: "", condition: "" })} />;
       }
     },
-    { 
-      headerName: "Operation", field: "operation", width: 140, 
+    { headerName: "Operation", field: "operation", width: 140, 
       cellRenderer: (p) => {
         const rows = stressMeta[p.data.stress] || [];
         const ops = rows.filter(r => r.Type === p.data.type).map(r => r.Operation).filter(Boolean);
@@ -392,8 +478,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     { headerName: "Program Name", field: "programName", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "Test Program", field: "testProgram", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "Test Script", field: "testScript", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
-    { 
-      headerName: "", 
+    { headerName: "", 
       width: 85, 
       pinned: "right", 
       cellRenderer: (p) => {
@@ -448,7 +533,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   return (
     <div className="form-page-container" style={{ padding: "0px", width: "100%" }}>
       {/* 頂部 Header */}
-      <div className="prof-card" style={{ padding: "8px 12px", marginBottom: "2px", borderRadius: "0", marginTop: "0", boxShadow: "none", border: "1px solid #e0e0e0" }}>
+      <div className="prof-card" style={{ padding: "8px 8px", marginBottom: "-4px", borderRadius: "0", marginTop: "0", boxShadow: "none", border: "1px solid #e0e0e0" }}>
         <div className="header-grid" style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: "8px" }}>
           {Object.keys(header).map((k) => (
             <div className="header-item" key={k} style={{ display: "flex", flexDirection: "column" }}>
@@ -456,7 +541,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
               {k === "Product Family" ? (
                 <select className="form-select-custom" value={header[k]} onChange={(e) => setHeader({ ...header, [k]: e.target.value, Product: "", Version: "" })}>
                   <option value="">-- Select --</option>
-                  {configMaster.productFamilies.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  {configMaster.productFamilies.map((f) => <option key={f.id} value={f.name}>{f.name}</option>)}
                 </select>
               ) : k === "Product" ? (
                 <select className="form-select-custom" value={header[k]} disabled={!header["Product Family"]} onChange={(e) => {
@@ -492,9 +577,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       </div>
 
       {/* LOT Tabs */}
-      <div className="lot-tabs-container" style={{ margin: "0", padding: "0", gap: "2px", display: "flex", alignItems: "flex-end" }}>
+      <div className="lot-tabs-container" style={{ margin: "0", padding: "0", gap: "0px", display: "flex", alignItems: "flex-end" }}>
         {lots.map((lot) => (
-          <div key={lot.id} className={`lot-tab-wrapper ${activeLotId === lot.id ? "active" : ""}`} onClick={() => setActiveLotId(lot.id)} style={{ padding: "4px 15px", borderBottom: activeLotId === lot.id ? "2px solid #007bff" : "none" }}>
+          <div key={lot.id} className={`lot-tab-wrapper ${activeLotId === lot.id ? "active" : ""}`} onClick={() => setActiveLotId(lot.id)} style={{ padding: "4px 10px", borderBottom: activeLotId === lot.id ? "2px solid #007bff" : "none" }}>
             <span style={{ fontSize: "12px", fontWeight: activeLotId === lot.id ? "bold" : "normal" }}>{lot.lotId || "New LOT"}</span>
             <button className="lot-tab-close" onClick={(e) => { e.stopPropagation(); deleteLot(lot.id); }}>×</button>
           </div>
@@ -504,8 +589,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
       {/* LOT Content */}
       {lots.map((lot) => activeLotId === lot.id && (
-        <div key={lot.id} className="prof-card" style={{ padding: "8px", borderRadius: "0", border: "1px solid #e0e0e0", borderLeft: "none", borderRight: "none", marginTop: "-1px" }}>
+        <div key={lot.id} className="prof-card" style={{ padding: "5px", borderRadius: "0", border: "0px solid #e0e0e0", borderLeft: "none", borderRight: "none", marginTop: "-1px" }}>
           <div className="lot-header d-flex align-items-center justify-content-between mb-2">
+            
             <div className="d-flex align-items-center gap-2">
               <span style={{ fontSize: "12px", fontWeight: "bold" }}>LOT ID:</span>
               <input className="lot-id-input" style={{ width: "160px", height: "26px" }} value={lot.lotId} onChange={(e) => setLots((p) => p.map((l) => l.id === lot.id ? { ...l, lotId: e.target.value } : l))} />
@@ -530,35 +616,206 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                   </div>
                 )}
               </div>
-              <button className="custom-btn-effect" onClick={() => saveAsTemplate(lot)} style={{ padding: "2px 5px", border: "1px solid #c2c1bfff", background: "#ffffffff", borderRadius: "4px", fontSize: "11px", fontWeight: "bold" }}> <Bookmark size={16} /> Save Template</button>
+              <button 
+                className="custom-btn-effect" 
+                onClick={() => {
+                  // 核心邏輯：在點擊時，手動從目前這個 lot 裡找出「左邊側邊欄選中」的那個 stress 物件
+                  const currentS = lot.stresses.find(s => s.id === (lot.activeStressId || lot.stresses[0]?.id));
+                  saveAsTemplate(currentS); 
+                }} 
+                style={{ padding: "2px 5px", border: "1px solid #c2c1bfff", background: "#ffffffff", borderRadius: "4px", fontSize: "11px", fontWeight: "bold" }}
+              > 
+                <Bookmark size={16} /> Save Template
+              </button>
             </div>
           </div>
 
-          {lot.stresses.map((s) => (
-            <div key={s.id} className="stress-box" style={{ padding: "0px", marginBottom: "4px" }}>
-              <div className="ag-theme-alpine custom-excel-grid">
-                <AgGridReact
-                  rowData={s.rowData}
-                  columnDefs={columnDefs}
-                  headerHeight={30}
-                  domLayout="autoHeight"
-                  rowDragManaged={true} animateRows={true}
-                  context={{ lotId: lot.id, stressId: s.id }}
-                  onRowDragEnd={(e) => onRowDragEnd(e, lot.id, s.id)}
-                  onGridReady={onGridReady}
-                  onColumnResized={onColumnResized}
-                  getRowStyle={(params) => {
-                    if (params.data.startTime === "SKIPPED") {
-                      return { backgroundColor: "#e3e5e8ff", color: "#94a3b8", fontStyle: "italic" };
-                    }
-                  }}
-                  getRowId={(p) => p.data?._rid}
-                  defaultColDef={{ resizable: true, sortable: true, singleClickEdit: true, wrapText: true, autoHeight: true }}
-                />
+          {/* --- 方案二核心：左側邊欄佈局 --- */}
+          <div style={{ display: "flex", border: "1px solid #e0e0e0", minHeight: "500px", background: "#fff", borderRadius: "4px", overflow: "hidden" }}>
+                       
+            {/* 🚀 精緻側邊欄 */}
+            <div style={{ 
+              width: isSidebarCollapsed ? "40px" : "150px", 
+              borderRight: "1px solid #e0e0e0", 
+              background: "#fdfdfd", 
+              display: "flex", 
+              flexDirection: "column",
+              transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+              position: "relative"
+            }}>
+              
+              {/* 🚀 精緻收合按鈕 */}
+              <div 
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                style={{ 
+                  cursor: "pointer", background: "#f1f3f5", textAlign: "center", 
+                  padding: "3px 0", color: "#868e96", fontSize: "10px", fontWeight: "800",
+                  borderBottom: "1px solid #e0e0e0", letterSpacing: "1px"
+                }}
+              >
+                {isSidebarCollapsed ? "▶" : "◀ COLLAPSE"}
               </div>
-              <button className="btn-add-step custom-btn-effect" style={{ marginTop: "4px", fontSize: "11px" }} onClick={() => addRow(lot.id, s.id)}>+ Add Step</button>
+
+              {!isSidebarCollapsed ? (
+                /* 🚀 展開狀態：移除外層 flex: 1，讓內容自然排列 */
+                <div style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto" }}>
+                  <div>
+                    {lot.stresses.map((s) => (
+                      <div 
+                        key={s.id} 
+                        onClick={() => switchStress(lot.id, s.id)}
+                        onDoubleClick={() => setEditingStressId(s.id)}
+                        style={{ 
+                          padding: "3px 5px", 
+                          cursor: "pointer", 
+                          borderBottom: "1px solid #c9cbccff", 
+                          background: lot.activeStressId === s.id ? "#e7f1ff" : "transparent",
+                          borderLeft: lot.activeStressId === s.id ? "2px solid #007bff" : "0px solid transparent",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          transition: "background 0.2s"
+                        }}
+                      >
+                        {editingStressId === s.id ? (
+                          <input 
+                            autoFocus
+                            style={{ width: "100%", border: "1px solid #007bff", fontSize: "12px", outline: "none" }}
+                            value={s.stressName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setLots(prev => prev.map(l => l.id === lot.id ? {
+                                ...l, stresses: l.stresses.map(st => st.id === s.id ? { ...st, stressName: val } : st)
+                              } : l));
+                            }}
+                            onKeyDown={(e) => e.key === "Enter" && setEditingStressId(null)}
+                            onBlur={() => setEditingStressId(null)}
+                          />
+                        ) : (
+                          <>
+                            <span style={{ 
+                              fontSize: "12px", 
+                              fontWeight: lot.activeStressId === s.id ? "600" : "400",
+                              color: lot.activeStressId === s.id ? "#0056b3" : "#495057",
+                              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
+                            }}>
+                              {s.stressName || "Untitled"}
+                            </span>
+                            
+                            {/* 刪除叉叉：無防呆、切換至上一個 */}
+                            <span 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLots(prev => prev.map(l => {
+                                  if (l.id !== lot.id) return l;
+                                  const deleteIndex = l.stresses.findIndex(st => st.id === s.id);
+                                  const newStresses = l.stresses.filter(item => item.id !== s.id);
+                                  let nextActiveId = l.activeStressId;
+                                  if (l.activeStressId === s.id) {
+                                    const prevStress = l.stresses[deleteIndex - 1];
+                                    nextActiveId = prevStress ? prevStress.id : (newStresses[0]?.id || null);
+                                  }
+                                  return { ...l, stresses: newStresses, activeStressId: nextActiveId };
+                                }));
+                              }}
+                              style={{ 
+                                fontSize: "16px", color: "#adb5bd", padding: "0 5px", 
+                                transition: "color 0.2s", fontWeight: "bold" 
+                              }}
+                              onMouseOver={(e) => e.target.style.color = "#ff4d4f"}
+                              onMouseOut={(e) => e.target.style.color = "#adb5bd"}
+                            >
+                              ×
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 🚀 Add Stress 按鈕：緊跟在列表下方 */}
+                  <div 
+                    onClick={() => addStressToLot(lot.id)}
+                    style={{ 
+                      padding: "10px 12px", 
+                      fontSize: "12px", 
+                      color: "#007bff", 
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "transparent",
+                      borderBottom: "1px solid #f1f3f5",
+                      transition: "all 0.2s"
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.background = "#f8f9fa"; }}
+                    onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{ fontSize: "16px", fontWeight: "bold" }}>+</span>
+                    <span>Add Stress</span>
+                  </div>
+                </div>
+              ) : (
+                /* 🚀 收合狀態：更精緻的方塊感 */
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "10px", gap: "8px" }}>
+                  {lot.stresses.map(s => (
+                    <div 
+                      key={s.id}
+                      onClick={() => switchStress(lot.id, s.id)}
+                      style={{ 
+                        width: "24px", height: "24px", borderRadius: "4px",
+                        background: lot.activeStressId === s.id ? "#007bff" : "transparent",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: "10px", color: lot.activeStressId === s.id ? "#fff" : "#adb5bd",
+                        cursor: "pointer", fontWeight: "bold",
+                        border: lot.activeStressId === s.id ? "none" : "1px solid #eee"
+                      }}
+                      title={s.stressName}
+                    >
+                      {s.stressName?.charAt(0).toUpperCase() || "S"}
+                    </div>
+                  ))}
+                  {/* 收合時的快速新增 */}
+                  <div 
+                    onClick={() => addStressToLot(lot.id)}
+                    style={{ width: "24px", height: "24px", display: "flex", alignItems: "center", justifyContent: "center", color: "#007bff", cursor: "pointer", fontSize: "18px" }}
+                    title="Add Stress"
+                  >
+                    +
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
+
+            {/* 右側表格內容：只顯示選中的那一個 Stress */}
+            <div style={{ flex: 1, padding: "0px" }}>
+              {lot.stresses.filter(s => s.id === (lot.activeStressId || lot.stresses[0]?.id)).map((s) => (
+                <div key={s.id} className="stress-box">
+                  <div className="ag-theme-alpine custom-excel-grid">
+                    <AgGridReact
+                      rowData={s.rowData}
+                      columnDefs={columnDefs}
+                      headerHeight={25}
+                      domLayout="autoHeight"
+                      rowDragManaged={true} animateRows={true}
+                      context={{ lotId: lot.id, stressId: s.id }}
+                      onRowDragEnd={(e) => onRowDragEnd(e, lot.id, s.id)}
+                      onGridReady={onGridReady}
+                      onColumnResized={onColumnResized}
+                      getRowStyle={(params) => {
+                        if (params.data.startTime === "SKIPPED") {
+                          return { backgroundColor: "#e3e5e8ff", color: "#94a3b8", fontStyle: "italic" };
+                        }
+                      }}
+                      getRowId={(p) => p.data?._rid}
+                      defaultColDef={{ resizable: true, sortable: true, singleClickEdit: true, wrapText: true, autoHeight: true }}
+                    />
+                  </div>
+                  <button className="btn-add-step custom-btn-effect" style={{ marginTop: "0px", fontSize: "11px" }} onClick={() => addRow(lot.id, s.id)}>+ Add Step</button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       ))}
 
@@ -601,6 +858,13 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         .tpl-name { flex: 1; font-size: 12px; color: #333; }
         .tpl-del-btn { background: transparent !important; color: #bbb; font-size: 14px; padding: 4px; display: flex; align-items: center; justify-content: center; }
         .tpl-del-btn:hover { color: #dc3545 !important; transform: scale(1.2); }
+        
+        .sidebar-item:hover {background-color: #f0f7ff !important;}
+        .sidebar-item.active {box-shadow: 2px 0 5px rgba(0,0,0,0.05);z-index: 1;}
+        .add-stress-btn-sidebar:hover {border-color: #007bff !important;color: #007bff !important;background-color: #fff !important;}
+        .sidebar-edit-input {animation: fadeIn 0.2s ease;}
+
+        @keyframes fadeIn {from { opacity: 0; }to { opacity: 1; }}
       `}</style>
     </div>
   );
