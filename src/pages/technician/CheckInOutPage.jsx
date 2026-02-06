@@ -12,6 +12,7 @@ export default function CheckInOutPage() {
   const [allProjects, setAllProjects] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [activeLotTab, setActiveLotTab] = useState(0);
+  const [activeStressIdx, setActiveStressIdx] = useState(null); 
   const [configMaster, setConfigMaster] = useState(null);
 
   useEffect(() => {
@@ -20,9 +21,9 @@ export default function CheckInOutPage() {
     setConfigMaster(config);
 
     const params = new URLSearchParams(location.search);
-    const pIdxParam = params.get("pIdx");
-    const lIdxParam = params.get("lIdx");
-    const lastViewedId = localStorage.getItem("last_viewed_project_id");
+    const pIdx = params.get("pIdx");
+    const lIdx = params.get("lIdx");
+    const sIdx = params.get("sIdx");
 
     if (data.length > 0) {
       setAllProjects(data);
