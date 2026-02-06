@@ -96,49 +96,58 @@ export default function RunCardListPage({ runCards, userRole, handleEdit, handle
 
       (proj.lots || []).forEach((lot, lIdx) => {
         (lot.stresses || []).forEach((stressObj, sIdx) => {
-          (stressObj.rowData || []).forEach((row, rIdx) => {
-            let stepStatus = "Init";
+          // --- 重點修改：不再 map rowData，改為計算該 Stress 的整體狀態 ---
+          const rows = stressObj.rowData || [];
+          
+          // --- 重新定義狀態判斷邏輯 ---
+          let displayStatus = "Init";
 
-            // 1. 先判斷是否為 Skipped (檢查時間欄位是否包含 SKIPPED 字眼)
-            if (String(row.endTime).toUpperCase() === "SKIPPED" || String(row.startTime).toUpperCase() === "SKIPPED") {
-              stepStatus = "Skipped";
-            } 
-            // 2. 再判斷原本的 Completed (確保排除 Skipped)
-            else if (row.endTime) {
-              stepStatus = "Completed";
-            } 
-            // 3. 判斷 In-Process
-            else if (row.startTime) {
-              stepStatus = "In-Process";
+          if (rows.length > 0) {
+            // 檢查是否全部完成 (所有 rows 都有 endTime 或是被 SKIPPED)
+            const isAllFinished = rows.every(r => 
+              r.endTime || 
+              String(r.endTime).toUpperCase() === "SKIPPED" || 
+              String(r.startTime).toUpperCase() === "SKIPPED"
+            );
+
+            // 檢查是否有任一步驟已經開始 (有 startTime 或是被 SKIPPED)
+            const isAnyStarted = rows.some(r => 
+              r.startTime || 
+              String(r.startTime).toUpperCase() === "SKIPPED" ||
+              String(r.endTime).toUpperCase() === "SKIPPED"
+            );
+
+            if (isAllFinished) {
+              displayStatus = "Completed";
+            } else if (isAnyStarted) {
+              displayStatus = "In-Process";
+            } else {
+              displayStatus = "Init";
             }
-
+          }
             flattened.push({
-              id: `${pIdx}-${lIdx}-${sIdx}-${rIdx}`, 
-              pIdx, lIdx, sIdx, rIdx,
-              status: stepStatus,
-              createdDate: projCreatedDate.split(' ')[0], 
-              productFamily: familyMap[header["Product Family"]] || header["Product Family"] || "",
-              product: header["Product"] || "",
-              productId: header["Product ID"] || "",
-              version: header["Version"] || "",
-              qr: header["QR"] || "",  
-              sampleSize: header["Sample Size"] || "",            
-              owner: header["Owner"] || "",
-              remark: header["Remark"] || "",
-              stress: row.stress || stressObj.stress || "",
-              lotId: lot.lotId || "",
-              type: row.type || "",
-              operation: row.operation || "",
-              condition: row.condition || "",
-              programName: row.programName || "",
-              testProgram: row.testProgram || "",
-              testScript: row.testScript || "",
-              checkIn: row.startTime || "",
-              checkOut: row.endTime || "",
-              qty: row.qty || "",
-              hardware: row.hardware || "",
-              note: row.note || ""
-            });
+            // ID 修改為到 Stress 層級即可
+            id: `${pIdx}-${lIdx}-${sIdx}`, 
+            pIdx, lIdx, sIdx,
+            status: displayStatus,
+            createdDate: projCreatedDate.split(' ')[0], 
+            productFamily: familyMap[header["Product Family"]] || header["Product Family"] || "",
+            product: header["Product"] || "",
+            productId: header["Product ID"] || "",
+            version: header["Version"] || "",
+            qr: header["QR"] || "",  
+            sampleSize: header["Sample Size"] || "",            
+            owner: header["Owner"] || "",
+            remark: header["Remark"] || "",
+            lotId: lot.lotId || "",
+            // 有些資料結構會把名稱存在 stressObj.stress，有些在 rows[0].stress
+            stress: stressObj.stress || (rows[0] && rows[0].stress) || "N/A",
+            
+            // 以下欄位因為現在是一行代表一組 Stress，若需要顯示，通常取第一筆資料當代表
+            type: rows[0]?.type || "",
+            operation: `Contains ${rows.length} steps`, // 這裡可以改成顯示步驟總數
+            condition: rows[0]?.condition || "",
+            // ... 其他欄位依此類推
           });
         });
       });
@@ -168,27 +177,34 @@ export default function RunCardListPage({ runCards, userRole, handleEdit, handle
     let raw = JSON.parse(localStorage.getItem("all_projects") || "[]");
     const targetSet = new Set(selectedIds);
 
+    // 遍歷所有專案與 Lot
     raw.forEach((proj, pIdx) => {
       if (!proj.lots) return;
       proj.lots.forEach((lot, lIdx) => {
         if (!lot.stresses) return;
-        lot.stresses.forEach((stress, sIdx) => {
-          if (stress.rowData) {
-            stress.rowData = stress.rowData.filter((row, rIdx) => {
-              const currentId = `${pIdx}-${lIdx}-${sIdx}-${rIdx}`;
-              return !targetSet.has(currentId);
-            });
-          }
+
+        // --- 核心修改：以 Stress 為單位進行過濾 ---
+        lot.stresses = lot.stresses.filter((_, sIdx) => {
+          const currentId = `${pIdx}-${lIdx}-${sIdx}`;
+          // 如果這個 ID 不在勾選名單中，就保留 (return true)
+          return !targetSet.has(currentId);
         });
-        lot.stresses = lot.stresses.filter(s => s.rowData && s.rowData.length > 0);
       });
-      proj.lots = proj.lots.filter(l => l.stresses && l.stresses.length > 0);
+
+      // 可選：如果 Lot 裡面的 Stresses 被刪光了，是否要刪除該 Lot？
+      // proj.lots = proj.lots.filter(l => l.stresses && l.stresses.length > 0);
     });
 
+    // 過濾掉已經沒有任何內容的專案
     const cleanedRaw = raw.filter(p => p.lots && p.lots.length > 0);
+
+    // 同步回 LocalStorage
     localStorage.setItem("all_projects", JSON.stringify(cleanedRaw));
+    
+    // 觸發自定義事件通知其他頁面
     window.dispatchEvent(new Event('storage'));
 
+    // 清空勾選狀態並重新讀取資料
     setSelectedIds([]);
     loadData();
   };
@@ -511,10 +527,9 @@ export default function RunCardListPage({ runCards, userRole, handleEdit, handle
                                   cursor: 'pointer' 
                                 }}
                                 onClick={() => {
-                                    // 跳轉並帶入專案索引 pIdx
-                                    navigate(`/checkinout?pIdx=${r.pIdx}&lIdx=${r.lIdx}`);
-                                  
-                                }}
+                                    // 跳轉時務必帶上 stress 參數，CheckInOutPage 才能接收到
+                                    navigate(`/checkinout?pIdx=${r.pIdx}&lIdx=${r.lIdx}&stress=${encodeURIComponent(r.stress)}`);
+                                  }}
                               >
                                 {r[col.key] || "(Empty QR)"}
                               </span>
@@ -537,7 +552,7 @@ export default function RunCardListPage({ runCards, userRole, handleEdit, handle
                             <button 
                               className="btn-icon-action advanced-edit" 
                               title="Advanced Edit (Add/Delete Steps)"
-                              style={{ color: '#3b82f6', fontSize: '15px' }} 
+                              style={{ color: '#3b82f6', fontSize: '11px' }} 
                               onClick={() => handleAdvancedEdit(r)}
                             >
                               📝

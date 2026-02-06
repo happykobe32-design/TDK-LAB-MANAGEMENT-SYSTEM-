@@ -24,170 +24,117 @@ export default function CheckInOutPage() {
     const pIdx = params.get("pIdx");
     const lIdx = params.get("lIdx");
     const sIdx = params.get("sIdx");
+    const urlStress = params.get("stress");
 
     if (data.length > 0) {
       setAllProjects(data);
-
-      if (pIdxParam !== null) {
-        const targetProject = data[parseInt(pIdxParam)];
-        if (targetProject) {
-          setSelectedId(targetProject.id);
-          localStorage.setItem("last_viewed_project_id", targetProject.id);
-          if (lIdxParam !== null) {
-            setActiveLotTab(parseInt(lIdxParam));
-          }
+      
+      // 優先權 1: 如果有 URL 參數，以此為準並記錄
+      if (pIdx !== null) {
+        const target = data[parseInt(pIdx)];
+        if (target) {
+          const l = lIdx !== null ? parseInt(lIdx) : 0;
+          const s = sIdx !== null ? parseInt(sIdx) : 0;
+          setSelectedId(target.id);
+          setActiveLotTab(l);
+          setActiveStressIdx(s);
+          
+          localStorage.setItem("last_viewed_project_id", target.id);
+          localStorage.setItem("last_viewed_lIdx", l);
+          localStorage.setItem("last_viewed_sIdx", s);
+          if (urlStress) localStorage.setItem("last_viewed_stress_name", urlStress);
           return;
         }
       }
-
-      if (lastViewedId) {
-        const exists = data.find(p => p.id === lastViewedId);
-        if (exists) { setSelectedId(lastViewedId); return; }
+      
+      // 優先權 2: 停留在上一動 (從 localStorage 恢復)
+      const lastId = localStorage.getItem("last_viewed_project_id");
+      const lastL = localStorage.getItem("last_viewed_lIdx");
+      const lastS = localStorage.getItem("last_viewed_sIdx");
+      
+      const exists = data.find(p => p.id === lastId);
+      if (exists) {
+        setSelectedId(lastId);
+        setActiveLotTab(lastL !== null ? parseInt(lastL) : 0);
+        setActiveStressIdx(lastS !== null ? parseInt(lastS) : 0);
+      } else {
+        setSelectedId(data[0].id);
+        setActiveLotTab(0);
+        setActiveStressIdx(0);
       }
-      const firstActive = data.find((p) => p.status === "in-process") || data.find((p) => p.status === "Init");
-      const finalId = firstActive ? firstActive.id : data[0].id;
-      setSelectedId(finalId);
     }
   }, [location.search]);
 
-  const getDisplayName = (key, value) => {
-    if (!value) return "-";
-    if (key === "Product Family" && configMaster?.productFamilies) {
-      const family = configMaster.productFamilies.find((f) => f.id === value);
-      return family ? family.name : value;
-    }
-    return value;
-  };
+  const currentProject = useMemo(() => allProjects.find(p => p.id === selectedId), [allProjects, selectedId]);
+  const activeLot = currentProject?.lots[activeLotTab];
 
-  const currentProject = useMemo(
-    () => allProjects.find((p) => p.id === selectedId),
-    [allProjects, selectedId]
-  );
+  const targetStress = useMemo(() => {
+    if (!activeLot) return null;
+    if (activeStressIdx !== null && activeLot.stresses[activeStressIdx]) {
+      return activeLot.stresses[activeStressIdx];
+    }
+    return activeLot.stresses[0];
+  }, [activeLot, activeStressIdx]);
 
   const getRowId = useCallback((params) => params.data._rid, []);
 
-  const syncUpdate = useCallback(
-    (lotId, stressId, rid, patch) => {
-      setAllProjects((prevAll) => {
-        const updated = prevAll.map((p) => {
-          if (p.id !== selectedId) return p;
-          const updatedLots = p.lots.map((l) =>
-            l.id === lotId
-              ? {
-                  ...l,
-                  stresses: l.stresses.map((s) =>
-                    s.id === stressId
-                      ? {
-                          ...s,
-                          rowData: s.rowData.map((r) =>
-                            r._rid === rid ? { ...r, ...patch } : r
-                          ),
-                        }
-                      : s
-                  ),
-                }
-              : l
-          );
-          const allRows = updatedLots.flatMap((l) => l.stresses.flatMap((s) => s.rowData));
-          const isAllDone = allRows.length > 0 && allRows.every((r) => 
-            (r.endTime && r.endTime !== "") || r.endTime === "SKIPPED"
-          );
-          const isAnyStarted = allRows.some((r) => r.startTime && r.startTime !== "");
-          let newStatus = isAllDone ? "completed" : (isAnyStarted ? "in-process" : "Init");
-          return { ...p, lots: updatedLots, status: newStatus };
+  const syncUpdate = useCallback((lotId, stressId, rid, patch) => {
+    setAllProjects(prev => {
+      const updated = prev.map(p => {
+        if (p.id !== selectedId) return p;
+        const newLots = p.lots.map(l => {
+          if (l.id !== lotId) return l;
+          return {
+            ...l,
+            stresses: l.stresses.map(s => s.id === stressId ? {
+              ...s, rowData: s.rowData.map(r => r._rid === rid ? { ...r, ...patch } : r)
+            } : s)
+          };
         });
-        localStorage.setItem("all_projects", JSON.stringify(updated));
-        return updated;
+        return { ...p, lots: newLots };
       });
-    },
-    [selectedId]
-  );
+      localStorage.setItem("all_projects", JSON.stringify(updated));
+      return updated;
+    });
+  }, [selectedId]);
 
   const columnDefs = useMemo(() => {
-    const isProjectCompleted = currentProject?.status === "completed";
-    const canEdit = !isProjectCompleted;
-
-    // ✅ 修改這裡：日期時間在第一行，名字在第二行
     const getCurrentInfo = () => {
-      const userName = sessionStorage.getItem("logged_user") || "Unknown";
+      const user = sessionStorage.getItem("logged_user") || "Unknown";
       const now = new Date();
-      // 第一行：2025/2/3 14:25
-      const timeStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      // 回傳兩行字串，中間用 \n 分隔
-      return `${timeStr}\n(${userName})`;
+      return `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}\n(${user})`;
     };
 
     return [
-      {
-        headerName: "STATUS",
-        width: 65,
-        pinned: "left",
-        valueGetter: (params) => {
-          if (params.data.endTime === "SKIPPED" || params.data.startTime === "SKIPPED") return "Skipped";
-          if (params.data.endTime) return "Completed";
-          if (params.data.startTime) return "In-Process";
-          return "Init";
-        },
-        cellRenderer: (params) => {
-          const status = params.value;
-          let color = "#727a84ff"; 
-          let bgColor = "#c2cad1ff";          
-          if (status === "Skipped") {color = "#76808eff"; bgColor = "#f8fafc"; } 
-          else if (status === "In-Process") {color = "#b45309";bgColor = "#fef3c7"; } 
-          else if (status === "Completed") {color = "#065f46";bgColor = "#d1fae5"; } 
-
-          return (
-            <div style={{ display: "flex", alignItems: "center", height: "100%", justifyContent: "center" }}>
-              <span style={{ 
-                backgroundColor: bgColor, 
-                color: color, 
-                padding: "2px 3px", 
-                borderRadius: "12px", 
-                fontSize: "9px", 
-                fontWeight: "800",
-                lineHeight: "1"
-              }}>
-                {status.toUpperCase()}
-              </span>
-            </div>
-          );
-        },
-      },
-      {headerName: "Stress",field: "stress",width: 100,pinned: "left",},
-      { headerName: "Type", field: "type", width: 75 },
-      { headerName: "Operation", field: "operation", width: 85 },
       { 
-        headerName: "Condition", 
-        field: "condition", 
-        width: 110, 
-        wrapText: true, 
-        autoHeight: true,
-        cellStyle: { lineHeight: "1.2", padding: "4px 2px" }
+        headerName: "STATUS", width: 75, pinned: "left",
+        valueGetter: p => p.data.endTime ? "COMPLETED" : (p.data.startTime ? "IN-PROCESS" : "INIT"),
+        cellRenderer: p => (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+            <span style={{ 
+              fontSize: "9px", fontWeight: "800", padding: "2px 4px", borderRadius: "10px",
+              background: p.value === "COMPLETED" ? "#d1fae5" : (p.value === "IN-PROCESS" ? "#fef3c7" : "#e2e8f0"),
+              color: p.value === "COMPLETED" ? "#065f46" : (p.value === "IN-PROCESS" ? "#92400e" : "#64748b")
+            }}>{p.value}</span>
+          </div>
+        )
       },
-      { 
-        headerName: "Units/Q'ty", 
-        field: "qty", 
-        width: 74, 
-        editable: (p) => canEdit && p.data.startTime !== "SKIPPED",
-        cellStyle: (params) => ({ background: params.data.startTime === "SKIPPED" ? "#ffffffff" : (canEdit ? "#fefce8" : "#fff") })
-      },
+      { headerName: "Type", field: "type", width: 70 },
+      { headerName: "Operation", field: "operation", width: 90 },
+      { headerName: "Condition", field: "condition", width: 130, wrapText: true, autoHeight: true },
       { headerName: "Program Name", field: "programName", width: 100, wrapText: true, autoHeight: true },
       { headerName: "Test Program", field: "testProgram", width: 100, wrapText: true, autoHeight: true },
       { headerName: "Test Script", field: "testScript", width: 100, wrapText: true, autoHeight: true },
+      { headerName: "Units", field: "qty", width: 60, editable: true, cellStyle: { background: "#fffbe6" } },
       {
         headerName: "CHECK-IN",
         field: "startTime",
-        width: 125, // 稍微調寬一點以容納完整日期時間
-        cellRenderer: (params) => {
-          const rowIndex = params.node.rowIndex;
-          const isSkipped = params.data.startTime === "SKIPPED";
-          const prevRow = rowIndex > 0 ? params.api.getDisplayedRowAtIndex(rowIndex - 1)?.data : null;
-          const isPrevStepDone = rowIndex === 0 || (!!prevRow?.endTime && prevRow?.endTime !== "");
-
-          if (isSkipped) return <div style={{ textAlign: "center", color: "#cbd5e1", fontSize: "10px", fontWeight: "bold" }}>SKIPPED</div>;
-
-          if (params.value) {
-            const parts = String(params.value).split('\n');
+        width: 115,
+        cellRenderer: p => {
+          if (p.data.startTime === "SKIPPED") return <div style={{ textAlign: "center", color: "#cbd5e1", fontSize: "10px", fontWeight: "bold" }}>SKIPPED</div>;
+          
+          if (p.value) {
+            const parts = String(p.value).split('\n');
             return (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: '1.2', width: '100%' }}>
                 <span style={{ color: '#64748b', fontSize: '9px', whiteSpace: 'nowrap' }}>{parts[0]}</span>
@@ -196,20 +143,32 @@ export default function CheckInOutPage() {
             );
           }
 
+          // 邏輯防呆：如果是第一行，或者上一行的 endTime 有值，則解鎖 START
+          const rowIndex = p.node.rowIndex;
+          let canStart = false;
+          if (rowIndex === 0) {
+            canStart = true;
+          } else {
+            const prevRow = p.api.getDisplayedRowAtIndex(rowIndex - 1);
+            if (prevRow && prevRow.data.endTime) {
+              canStart = true;
+            }
+          }
+
           return (
-            <button
-              disabled={!isPrevStepDone}
-              className={`op-button ${isPrevStepDone ? "start" : "waiting"}`}
+            <button 
+              disabled={!canStart}
+              className={`op-btn ${canStart ? "start" : "disabled"}`} 
               onClick={() => {
                 if (window.confirm("Are you sure you want to START?")) {
-                  syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { startTime: getCurrentInfo() });
+                  syncUpdate(activeLot.id, targetStress.id, p.data._rid, { startTime: getCurrentInfo() });
                 }
               }}
             >
-              {isPrevStepDone ? "▶ START" : "🔒"}
+              ▶ START
             </button>
           );
-        },
+        }
       },
       {
         headerName: "CHECK-OUT",
@@ -229,158 +188,102 @@ export default function CheckInOutPage() {
             );
           }
 
+          // 邏輯防呆：必須當前行的 startTime 有值且不是 SKIPPED 才能點 FINISH
           const canFinish = !!params.data.startTime && params.data.startTime !== "SKIPPED";
           return (
             <button
               disabled={!canFinish}
-              className={`op-button ${canFinish ? "finish" : "waiting"}`}
+              className={`op-btn ${canFinish ? "end" : "disabled"}`}
               onClick={() => {
                 if (window.confirm("Are you sure you want to FINISH?")) {
-                  syncUpdate(params.context.lotId, params.context.stressId, params.data._rid, { endTime: getCurrentInfo() });
+                  syncUpdate(activeLot.id, targetStress.id, params.data._rid, { endTime: getCurrentInfo() });
                 }
               }}
             >
               ■ FINISH
             </button>
           );
-        }
+        },
+        cellStyle: (params) => ({ background: params.data.startTime === "SKIPPED" ? "#ffffff" : "#fff" })
       },
-      { 
-        headerName: "Hardware", 
-        field: "hardware", 
-        width: 70, 
-        editable: (p) => canEdit && p.data.startTime !== "SKIPPED",
-        cellStyle: (params) => ({ background: params.data.startTime === "SKIPPED" ? "#ffffffff" : (canEdit ? "#fefce8" : "#fff") }) 
-      },
-      { 
-        headerName: "Note", 
-        field: "note", 
-        width: 120, 
-        editable: (p) => canEdit && p.data.startTime !== "SKIPPED",
-        cellStyle: (params) => ({ background: params.data.startTime === "SKIPPED" ? "#ffffffff" : (canEdit ? "#fefce8" : "#fff") }) 
-      },
+      { headerName: "Hardware", field: "hardware", width: 80, editable: true, cellStyle: { background: "#fffbe6" } },
+      { headerName: "Note", field: "note", flex: 1, minWidth: 100, editable: true, cellStyle: { background: "#fffbe6" } },
     ];
-  }, [syncUpdate, currentProject]);
+  }, [syncUpdate, activeLot, targetStress]);
 
-  const activeLot = currentProject?.lots[activeLotTab];
-
-  const renderHeaderExcel = () => {
+  const renderWorkOrderHeader = () => {
     if (!currentProject) return null;
     const h = currentProject.header;
-    const order = [
-      { label: "PRODUCT FAMILY", key: h["Product Family"] ? "Product Family" : "Project Family" },
-      { label: "PRODUCT", key: "Product" },
-      { label: "PRODUCT ID", key: "Product ID" },
-      { label: "VERSION", key: "Version" },
-      { label: "QR", key: "QR" },
-      { label: "SAMPLE SIZE", key: "Sample Size" },
-      { label: "OWNER", key: "Owner" },
-      { label: "REMARK", key: "Remark" }
-    ];
+    
+    let pfDisplay = h["Product Family"];
+    if (pfDisplay && pfDisplay.startsWith("PF_")) {
+       const found = configMaster?.productFamilies?.find(f => f.id === pfDisplay);
+       if (found) pfDisplay = found.name;
+       else if (currentProject.productFamilyName) pfDisplay = currentProject.productFamilyName;
+    }
+
+    const stressName = targetStress?.stress || 
+                       (activeLot?.stresses && activeLot.stresses[activeStressIdx]?.stress) || 
+                       (new URLSearchParams(location.search)).get("stress") || 
+                       localStorage.getItem("last_viewed_stress_name") || "-";
+    
+    const InfoBox = ({ label, value, color = "#000000ff", flex = 1 }) => (
+      <div style={{ flex: flex, borderRight: "1px solid #000000ff", display: "flex", flexDirection: "column" }}>
+        <div style={{ background: "#d7dbdeff", fontSize: "10px", fontWeight: "bold", padding: "2px 6px", borderBottom: "1px solid #000000ff", color: "#000000ff" }}>{label}</div>
+        <div style={{ padding: "4px 6px", fontSize: "12px", fontWeight: "bold", color: color }}>{value || "-"}</div>
+      </div>
+    );
 
     return (
-      <div style={{ display: "flex", width: "100%", border: "1px solid #334155", background: "#fff", marginBottom: "4px", borderRadius: "4px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        {order.map((item, i) => (
-          <div key={i} style={{ flex: 1, borderRight: i === order.length - 1 ? "none" : "1px solid #e2e8f0" }}>
-            <div style={{ fontSize: "9px", background: "#334155", color: "#fff", padding: "4px 2px", fontWeight: "bold", textAlign: "center", textTransform: "uppercase" }}>
-              {item.label}
-            </div>
-            <div style={{ fontSize: "12px", color: "#1e293b", padding: "6px 4px", fontWeight: "bold", textAlign: "center", minHeight: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {getDisplayName("Product Family", h[item.key])}
-            </div>
-          </div>
-        ))}
+      <div style={{ border: "1px solid #000000ff", borderRadius: "0px", overflow: "hidden", background: "#fff", marginBottom: "10px" }}>
+
+        <div style={{ display: "flex", borderBottom: "1px solid #000000ff" }}>
+          <InfoBox label="PRODUCT FAMILY" value={pfDisplay} />
+          <InfoBox label="PRODUCT" value={h["Product"]} />
+          <InfoBox label="VERSION" value={h["Version"]} />
+          <InfoBox label="SAMPLE SIZE" value={h["Sample Size"]} />
+          <InfoBox label="QR" value={h["QR"]} />
+          <InfoBox label="OWNER" value={h["Owner"]} />
+        </div>
+        <div style={{ display: "flex" }}>
+          <InfoBox label="LOT NO." value={activeLot?.lotId} />
+          <InfoBox label="STRESS" value={stressName}  />         
+          <InfoBox label="REMARK" value={h["Remark"]} flex={2} />
+        </div>
       </div>
     );
   };
 
   return (
-    <div style={{ padding: "10px", background: "#ffffffff", minHeight: "100vh", fontFamily: "Segoe UI, Roboto, sans-serif" }}>
-      {!currentProject ? (
-        <div style={{ padding: "50px", textAlign: "center", color: "#94a3b8" }}>No Project Selected</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0px", maxWidth: "1400px", margin: "0 auto" }}>
-          
-          {renderHeaderExcel()}
+    <div style={{ padding: "5px", background: "#ffffffff", minHeight: "100vh" }}>
+      <div style={{ width: "100%", margin: "0 auto" }}>
+        {renderWorkOrderHeader()}
 
-          <div style={{ display: "flex", gap: "2px", paddingLeft: "0px" }}>
-            {currentProject.lots.map((lot, idx) => {
-              const params = new URLSearchParams(window.location.search);
-              const lIdxParam = params.get("lIdx");
-              if (lIdxParam !== null && idx !== parseInt(lIdxParam)) return null;
-
-              return (
-                <div 
-                  key={lot.id} 
-                  onClick={() => setActiveLotTab(idx)}
-                  style={{
-                    padding: "4px 15px", 
-                    cursor: "pointer", 
-                    fontSize: "11px", 
-                    fontWeight: "bold",
-                    background: activeLotTab === idx ? "#fff" : "#e2e8f0",
-                    color: activeLotTab === idx ? "#2563eb" : "#64748b",
-                    border: "1px solid #cbd5e1", 
-                    borderBottom: activeLotTab === idx ? "2px solid #fff" : "1px solid #cbd5e1",
-                    borderRadius: "6px 6px 0 0", 
-                    zIndex: activeLotTab === idx ? 10 : 1,
-                    marginBottom: "-1px", 
-                    transition: "all 0.2s"
-                  }}
-                >
-                  LOT: {lot.lotId}
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: "0 4px 4px 4px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }}>
-            {activeLot && activeLot.stresses.map((s, sIdx) => (
-              <div key={s.id} className="ag-theme-alpine custom-grid" style={{ width: "100%", borderBottom: sIdx === activeLot.stresses.length - 1 ? 'none' : '4px solid #f1f5f9' }}>
-                <AgGridReact
-                  rowData={s.rowData}
-                  columnDefs={columnDefs}
-                  context={{ lotId: activeLot.id, stressId: s.id }}
-                  headerHeight={25}
-                  rowHeight={42} // 稍微加高 Row 以容納兩行文字
-                  domLayout="autoHeight"
-                  getRowId={getRowId}
-                  getRowStyle={(params) => {
-                    if (params.data.startTime === "SKIPPED") {
-                      return { backgroundColor: "#ffffffff" };
-                    }
-                  }}
-                  defaultColDef={{ sortable: false, resizable: true, suppressMovable: true }}
-                  onCellValueChanged={(p) => syncUpdate(activeLot.id, s.id, p.data._rid, { [p.column.colId]: p.newValue })}
-                />
-              </div>
-            ))}
-          </div>
-        </div> 
-      )}
+        <div className="ag-theme-alpine custom-grid" style={{ width: "100%", overflow: "hidden" }}>
+          {targetStress && (
+            <AgGridReact
+              rowData={targetStress.rowData}
+              columnDefs={columnDefs}
+              domLayout="autoHeight"
+              getRowId={getRowId}
+              headerHeight={24}
+              rowHeight={35}
+              defaultColDef={{ resizable: true, sortable: false }}
+            />
+          )}
+        </div>
+      </div>
 
       <style>{`
-        .custom-grid { box-sizing: border-box; }
-        .custom-grid .ag-header { background-color: #334155 !important; border-bottom: 1px solid #1e293b !important; }
-        .custom-grid .ag-header-cell-label { 
-          color: #ffffff !important; font-size: 9px; font-weight: 700; 
-          justify-content: center; letter-spacing: 0.05em;
-        }
-        .custom-grid .ag-cell { 
-          font-size: 10px; padding: 2px 4px !important; 
-          line-height: 1.1 !important; border-right: 1px solid #b5b9bcff !important; 
-          display: flex; align-items: center; color: #000000ff;
-        }
-        .custom-grid .ag-row { border-bottom: 1px solid #b5b9bcff !important; }
-        .op-button { 
-          width: 100%; height: 25px; border: none; border-radius: 4px; 
-          font-weight: 800; font-size: 10px; cursor: pointer; transition: all 0.2s;
-        }
-        .op-button.start { background: #2563eb; color: #fff; box-shadow: 0 2px 4px rgba(37,99,235,0.2); }
-        .op-button.start:hover { background: #1d4ed8; }
-        .op-button.finish { background: #059669; color: #fff; box-shadow: 0 2px 4px rgba(5,150,105,0.2); }
-        .op-button.finish:hover { background: #047857; }
-        .op-button.waiting { background: transparent; color: #cbd5e1; border: 1px dashed #e2e8f0; cursor: not-allowed; }
+        .custom-grid { border: 1px solid #000000ff; border-radius: 0px; }
+        .ag-header { background-color: #d7dbdeff !important; border-bottom: 1px solid #000000ff !important; }
+        .ag-header-cell-label { color: #040404ff !important; font-size: 10px; justify-content: center; font-weight: bold; }
+        .ag-cell { display: flex; align-items: center; border-right: 1px solid #000000ff !important; font-size: 10px; padding: 2px 4px !important; }
+        .ag-row { border-bottom: 1px solid #000000ff !important; }
+        .op-btn { width: 100%; height: 28px; border: none; border-radius: 4px; font-weight: 800; cursor: pointer; font-size: 9px; }
+        .op-btn.start { background: #2563eb; color: #fff; }
+        .op-btn.end { background: #059669; color: #fff; }
+        .op-btn.disabled { background: #f1f5f9; color: #cbd5e1; cursor: not-allowed; border: 1px dashed #000000ff; }
       `}</style>
     </div>
   );

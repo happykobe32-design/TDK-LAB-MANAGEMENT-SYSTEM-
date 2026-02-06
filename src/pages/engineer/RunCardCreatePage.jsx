@@ -201,7 +201,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     id: "lot_" + Date.now(),
     lotId: "",
     // 初始化時就給它一個預設 Stress 分頁
-    stresses: [{ id: firstStressId, stressName: "ALT", rowData: [newRow()] }],
+    stresses: [{ id: firstStressId, stressName: "New Stress", rowData: [newRow()] }],
     activeStressId: firstStressId, // <--- 新增這行：追蹤目前選中的 Stress
   };
 };
@@ -284,7 +284,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         : l
     ));
   };
-  const deleteLot = (lotId) => { if (lots.length === 1) return alert("至少需保留一個 LOT"); const remain = lots.filter((l) => l.id !== lotId); setLots(remain); setActiveLotId(remain[0].id); };
+  const deleteLot = (lotId) => { if (lots.length === 1) return alert("At least one LOT must be retained"); const remain = lots.filter((l) => l.id !== lotId); setLots(remain); setActiveLotId(remain[0].id); };
   
   const duplicateLot = (lot) => {
     const id = "lot_" + Date.now();
