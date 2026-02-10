@@ -8,10 +8,11 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import "../../pages/engineer/RunCardCreatePage.css";
 // 在檔案頂部引入
-import { Copy, Trash2, FastForward, RotateCcw, Bookmark, Star} from "lucide-react";
+import { Copy, Trash2, Bookmark, Star} from "lucide-react";
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const API_BASE = "http://localhost:5001";
+// 使用 window.location.hostname 會自動抓取「你現在網址列顯示的那個 IP」
+const API_BASE = `http://${window.location.hostname}:9000`;
 
 // --- REMARK 彈窗編輯組件 ---
 const RemarkModal = ({ isOpen, value, onSave, onClose }) => {
@@ -209,23 +210,25 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   const [lots, setLots] = useState([createInitialLot()]);
   const [activeLotId, setActiveLotId] = useState(lots[0].id);
 
-  // 2. 讀取資料
+  // 2. 讀取資料 同步讀取資料庫 Stress 配置
   useEffect(() => {
-    // 獲取 Meta 資料
-    fetch(`${API_BASE}/api/meta`)
-      .then((r) => r.json())
-      .then(async (data) => {
+    fetch(`${API_BASE}/stress/`)
+      .then(res => res.json())
+      .then(dbStresses => {
         const map = {};
-        for (const s of data.stresses || []) {
-          const res = await fetch(`${API_BASE}/api/stress/${encodeURIComponent(s)}`);
-          const json = await res.json();
-          map[s] = json.sheet1_rows || [];
-        }
+        dbStresses.forEach(item => {
+          // 將資料庫格式轉換為前端表格需要的格式
+          map[item.name] = item.steps.map(s => ({
+            Type: s.type,
+            Operation: s.operation,
+            Condition: s.condition
+          }));
+        });
         setStressMeta(map);
-      });
-
-    // --- 加入這段新邏輯 (從資料庫獲取) ---
-    fetch("http://localhost:9000/products/")
+      })
+      .catch(err => console.error("Stress DB sync failed:", err));
+    // 讀取資料 同步讀取資料庫 product family 配置
+    fetch(`http://${window.location.hostname}:9000/products/`)
       .then(res => res.json())
       .then(dbData => {
         // 1. 提取唯一的 Family 名稱，格式化成下拉選單需要的結構
@@ -233,7 +236,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
           id: f, 
           name: f
         }));
-
         // 2. 處理產品列表，對應 familyId
         const products = dbData.map(p => ({
           id: p.id,
@@ -270,7 +272,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       l.id === lotId ? { ...l, activeStressId: stressId } : l
     ));
   };
-
   // 新增：在特定 Lot 下新增一個 Stress 分頁
   const addStressToLot = (lotId) => {
     const newStress = { 
@@ -379,82 +380,112 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     }
   };
 
-  // 4. 修改後的儲存邏輯 (直接覆蓋你原本的 handleSave)
-  const handleSave = () => {
-    const requiredFields = ["Product Family", "Product", "Product ID", "Version", "QR", "Sample Size", "Owner"];
-    for (let field of requiredFields) {
-      if (!header[field]) return alert(`⚠️ Please fill in ${field}`);
+  // 4. 最終儲存：將整個專案（Header + LOTs + Run Cards）送出
+  const handleSave = async () => {
+  // 1. 必填檢查
+  const requiredFields = ["Product Family", "Product", "Product ID", "Version", "QR", "Sample Size", "Owner"];
+  for (let field of requiredFields) {
+    if (!header[field]) return alert(`⚠️ 請填寫 ${field}`);
+  }
+  // 儲存前二次確認
+  if (!window.confirm("Are you sure you want to save the project and all Run Cards?")) return;  
+
+  try {
+    // --- STEP 1: 建立 Project 主表 ---
+    const projectPayload = {
+      product_family: header["Product Family"],
+      product: header["Product"],
+      product_id: header["Product ID"], 
+      version: header["Version"],
+      qr: header["QR"],
+      sample_size: String(header["Sample Size"]),
+      owner: header["Owner"],      
+      remark: header["Remark"] || "",   
+      status: "Active"
+    };
+
+    const projRes = await fetch(`${API_BASE}/projects/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(projectPayload),
+    });
+
+    if (!projRes.ok) {
+      const err = await projRes.json();
+      throw new Error(err.detail || "Failed to create the main project form");    // 建立專案失敗
     }
     
-  const deleteStress = (lotId, stressId) => {
-  if (!window.confirm("Delete this Stress?")) return;
-  setLots(prev => prev.map(l => {
-    if (l.id !== lotId) return l;
-    const remaining = l.stresses.filter(s => s.id !== stressId);
-    return { 
-      ...l, 
-      stresses: remaining,
-      // 如果刪掉的是當前的，就自動跳到第一個
-      activeStressId: l.activeStressId === stressId ? (remaining[0]?.id || null) : l.activeStressId
-    };
-  }));
+    const savedProj = await projRes.json();
+    const projectId = savedProj.project_id; // 獲取後端生成的 ID
+
+    // --- STEP 2: 依序建立 Run Cards (解決順序跳亂問題) ---
+    let savedCount = 0;
+
+    // 使用 for...of 迴圈代替 forEach，這能保證 await 依序等待，不會亂掉
+    for (const lot of lots) {
+      for (const stress of lot.stresses) {
+        for (const row of stress.rowData) {
+          
+          // ⚠️ 對齊後端欄位名稱 (根據你的 pgAdmin 截圖)
+          const runCardPayload = {
+            project_id: projectId,
+            lot_id: String(lot.lotId),
+            stress: row.stress || stress.stressName || "", 
+            type: row.type || "",
+            operation: row.operation || "",
+            condition: row.condition || "",
+            // 注意：這裡必須與你後端 schemas/run_card.py 定義的變數名稱一致
+            program_name: row.programName || "", 
+            test_program: row.testProgram || "",
+            test_script: row.testScript || "",
+            unit_qty: parseInt(row.qty, 10) || 0,
+            status: "Pending",
+            created_by: header["Owner"] // 帶入目前的創建人
+          };
+
+          const runCardRes = await fetch(`${API_BASE}/run-cards/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(runCardPayload),
+          });
+
+          if (runCardRes.ok) {
+            savedCount++;
+          } else {
+            console.error(`Lot ${lot.lotId} Save failed:`, await runCardRes.text());
+          }
+        }
+      }
+    }
+
+    alert(`✅ Save successful!\n project has been created and  ${savedCount} Run Cards have been saved`);
+    
+    // 跳轉頁面
+    window.location.hash = "/list";
+
+  } catch (error) {
+    console.error("Save failed:", error); // 儲存失敗
+    alert(`❌ An error occurred during the save process: ${error.message}`); // 儲存過程發生錯誤
+  }
 };
-
-    const isEditMode = pIdx !== null;
-    const confirmMsg = isEditMode 
-      ? `Are you sure you want to update your Project: ${header["Product ID"]}?` 
-      : `Are you sure you want to CREATE project: ${header["Product ID"]}?`;
-
-    if (!window.confirm(confirmMsg)) return;
-
-    const allProjects = JSON.parse(localStorage.getItem("all_projects") || "[]");
-    
-    // 準備要存入的物件
-    const projectData = { 
-      header, 
-      lots, 
-      status: isEditMode ? "Updated" : "Init" 
-    };
-
-    if (isEditMode) {
-      // 編輯模式：更新陣列中的特定位置
-      const idx = parseInt(pIdx);
-      allProjects[idx] = { 
-        ...allProjects[idx], // 保留原本的 ID 和 createdAt
-        ...projectData,
-        updatedAt: new Date().toLocaleString()
-      };
-    } else {
-      // 新增模式
-      const newProject = { 
-        id: "proj_" + Date.now(), 
-        createdAt: new Date().toLocaleString(),
-        ...projectData 
-      };
-      allProjects.push(newProject);
-    }
-
-    localStorage.setItem("all_projects", JSON.stringify(allProjects));
-    alert(isEditMode ? "✅ Project Updated!" : `✅ Project: ${header["Product ID"]} Saved!`);
-
-    // 儲存後的收尾工作
-    if (handleFinalSubmit) {
-      handleFinalSubmit(); 
-    } else {
-      // 如果沒有傳入 handleFinalSubmit，手動跳轉回清單頁
-      window.location.href = "#/list"; // 根據你的路由調整路徑
-    }
-  };
-
   // 5. AG Grid Columns
   const columnDefs = useMemo(() => [
-    { headerName: "Stress", field: "stress", width: 160, rowDrag: true, 
+    { 
+      headerName: "Stress", field: "stress", width: 160, 
       cellRenderer: (p) => (
         <EditableDropdown 
           value={p.value} 
-          options={Object.keys(stressMeta)} 
+          options={Object.keys(stressMeta)} // 這裡會自動抓到資料庫所有的 Stress 名稱
           placeholder="-- Stress --"
-          onChange={(val) => updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { stress: val, type: "", operation: "", condition: "" })} 
+          onChange={(val) => {
+            // 當選中 ALT 時，自動帶入該 Stress 的第一個步驟（或保持空白讓使用者選）
+            updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, { 
+              stress: val, 
+              type: "", 
+              operation: "", 
+              condition: "" 
+            });
+          }} 
         />
       ),
     },
@@ -479,12 +510,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     { headerName: "Test Program", field: "testProgram", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "Test Script", field: "testScript", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "", 
-      width: 85, 
+      width: 60, 
       pinned: "right", 
-      cellRenderer: (p) => {
-        // 判斷是否已經被 Skip
-        const isSkipped = p.data.startTime === "SKIPPED";
-        
+      cellRenderer: (p) => {       
         return (
           <div className="d-flex gap-2 justify-content-center align-items-center h-100"> 
           {/* copy 按鈕 */}
@@ -505,24 +533,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
               style={{ color: "#ef4444" }}
             >
               <Trash2 size={16} />
-            </button>
-            
-            {/* Skip 按鈕 */}
-            <button 
-              className={`grid-icon-btn ${isSkipped ? 'skip-active-btn' : ''}`} 
-              title={isSkipped ? "Unskip Step" : "Skip Step"} 
-              onClick={() => {
-                const action = isSkipped ? "UNSKIP" : "SKIP";
-                if (window.confirm(`Are you sure you want to ${action} this step?`)) {
-                  const patch = isSkipped 
-                    ? { startTime: "", endTime: "" } 
-                    : { startTime: "SKIPPED", endTime: "SKIPPED" };
-                  updateRowFields(p.context.lotId, p.context.stressId, p.data._rid, patch);
-                }
-              }}
-              style={{ color: isSkipped ? "#3b82f6" : "#64748b" }}
-            >
-              {isSkipped ? <RotateCcw size={16} /> : <FastForward size={16} />}
             </button>
           </div> 
         );
@@ -820,7 +830,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       ))}
 
       <div className="form-actions-bar text-end" style={{ padding: "10px", borderTop: "1px solid #eee" }}>
-        <button className="btn-success-lg custom-btn-effect" style={{ padding: "5px 30px" }} onClick={handleSave}>Save Project</button>
+        <button className="btn-success-lg custom-btn-effect" style={{ padding: "5px 30px" }} onClick={handleSave}>Save</button>
       </div>
 
       <style>{`

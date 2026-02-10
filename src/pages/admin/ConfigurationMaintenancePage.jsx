@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from "react";
 import { FaTrashAlt, FaEdit, FaPlus, FaDatabase } from "react-icons/fa"; 
 import axios from "axios";
 
-// API 基礎路徑 (結尾不帶斜線)
-const API_BASE = "http://localhost:9000/products"; 
+// API 基礎路徑 (結尾不帶斜線) 使用 window.location.hostname 會自動抓取「你現在網址列顯示的那個 IP」
+const API_BASE = `http://${window.location.hostname}:9000/products`;
 
 export default function ConfigurationMaintenancePage() {
   const [products, setProducts] = useState([]); 
@@ -20,7 +20,7 @@ export default function ConfigurationMaintenancePage() {
       setProducts(res.data);
     } catch (e) {
       console.error("Failed to fetch products:", e);
-      alert("無法讀取資料庫，請檢查後端服務");
+      alert("Unable to read the database, please check the backend service."); // 提示用戶檢查後端服務
     }
   }, []);
 
@@ -55,7 +55,7 @@ export default function ConfigurationMaintenancePage() {
 
   const handleSaveProduct = async () => {
     if (!editingProduct.product_family || !editingProduct.product_name) {
-      return alert("請填寫必填欄位");
+      return alert("Please fill in the required fields");  //請填寫必填欄位
     }
 
     try {
@@ -75,18 +75,18 @@ export default function ConfigurationMaintenancePage() {
       fetchProducts(); 
     } catch (e) {
       console.error("Save failed:", e);
-      alert("儲存失敗，請檢查欄位格式或後端 Log");
+      alert("Save failed, please check the field format or backend.");  // 提示用戶檢查欄位格式或後端服務
     }
   };
 
   const handleDeleteProduct = async (id) => {
-    if (!window.confirm("確定要刪除此產品？")) return;
+    if (!window.confirm("Are you sure you want to delete this product？")) return;
     try {
       await axios.delete(`${API_BASE}/${id}`); // 使用正確的 id
       fetchProducts(); 
     } catch (e) {
       console.error("Delete failed:", e);
-      alert("刪除失敗");
+      alert("Delete failed.");
     }
   };
 
@@ -95,12 +95,12 @@ export default function ConfigurationMaintenancePage() {
     : products.filter(p => p.product_family === filterFamily);
 
   return (
-    <div className="container-fluid py-2 px-3" style={{ backgroundColor: "#fbfbfb", minHeight: "100vh" }}>
+    <div className="container-fluid py-2 px-0" style={{ backgroundColor: "#ffffff", minHeight: "100vh" }}>
       
       <div className="mb-2 px-1 border-bottom pb-1">
         <div className="d-flex align-items-center gap-2">
           <span className="text-muted fw-bold" style={{ fontSize: '1rem', letterSpacing: '1px' }}>
-            PRODUCT SETTINGS (Connected to DB)
+            PRODUCT SETTINGS
           </span>
         </div>
       </div>
@@ -111,7 +111,7 @@ export default function ConfigurationMaintenancePage() {
           <div className="card shadow-sm border-0 rounded-1">
             <div className="card-header bg-light py-2 px-3 d-flex justify-content-between align-items-center">
               <span className="small fw-bold text-secondary">PRODUCT FAMILY</span>
-              <button className="btn btn-xs btn-outline-primary py-0 px-2" onClick={() => setShowFamilyInput(true)}>
+              <button className="btn btn-xs btn-outline-primary py-0 px-1" onClick={() => setShowFamilyInput(true)}>
                 <FaPlus size={10} /> ADD
               </button>
             </div>
@@ -166,13 +166,12 @@ export default function ConfigurationMaintenancePage() {
             
             <div className="table-responsive">
               <table className="table table-bordered table-sm mb-0 text-center align-middle">
-                <thead style={{ backgroundColor: "#f1f5f9" }}>
+                <thead style={{ backgroundColor: "#f9f5f1" }}>
                   <tr className="text-secondary fw-bold" style={{ fontSize: '0.75rem' }}>
-                    <th style={{ width: "60px" }}>NO</th>
-                    <th className="text-start ps-3">FAMILY</th>
+                    <th style={{ width: "30px" }}>NO</th>
+                    <th className="text-start ps-3">PRODUCT FAMILY</th>
                     <th className="text-start ps-3">PRODUCT NAME</th>
-                    {/* USER 欄位已移除 */}
-                    <th style={{ width: "100px" }}>ACTION</th>
+                    <th style={{ width: "80px" }}></th>
                   </tr>
                 </thead>
                 <tbody style={{ fontSize: '0.85rem' }}>
