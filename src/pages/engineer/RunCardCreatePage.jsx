@@ -110,12 +110,13 @@ const EditableDropdown = ({ value, options, onChange, placeholder, disabled }) =
     <div ref={containerRef} className="editable-dropdown-container" style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", position: "relative" }}>
       <textarea
         className="grid-cell-input"
-        style={{ flexGrow: 1, border: "none", background: "transparent", width: "calc(100% - 20px)", padding: "4px 8px", fontSize: "12px", outline: "none", resize: "none", overflow: "hidden", minHeight: "26px" }}
+        style={{ flexGrow: 1, border: "none", background: "transparent", width: "calc(100% - 20px)", padding: "4px 8px", fontSize: "12px", outline: "none", resize: "none", overflow: "hidden", minHeight: "26px", display: "flex", alignItems: "center" }}
         value={value || ""}
         placeholder={placeholder}
         disabled={disabled}
         rows={1}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={(e) => onChange(e.target.value)} // <--- 加上這行，滑鼠點外面就會自動存
       />
       
       {!disabled && (
@@ -210,7 +211,8 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   const [lots, setLots] = useState([createInitialLot()]);
   const [activeLotId, setActiveLotId] = useState(lots[0].id);
 
-  // 2. 讀取資料 同步讀取資料庫 Stress 配置
+
+  // 2. 讀取資料 同步讀取資料庫 stress_test_settings 配置
   useEffect(() => {
     fetch(`${API_BASE}/stress/`)
       .then(res => res.json())
@@ -228,7 +230,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       })
       .catch(err => console.error("Stress DB sync failed:", err));
     // 讀取資料 同步讀取資料庫 product family 配置
-    fetch(`http://${window.location.hostname}:9000/products/`)
+    fetch(`${API_BASE}/products/`)
       .then(res => res.json())
       .then(dbData => {
         // 1. 提取唯一的 Family 名稱，格式化成下拉選單需要的結構
@@ -387,20 +389,20 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   for (let field of requiredFields) {
     if (!header[field]) return alert(`⚠️ 請填寫 ${field}`);
   }
-  // 儲存前二次確認
-  if (!window.confirm("Are you sure you want to save the project and all Run Cards?")) return;  
+
+  if (!window.confirm("確定要儲存專案與所有 Run Cards 嗎？")) return;
 
   try {
-    // --- STEP 1: 建立 Project 主表 ---
+    // --- STEP 1: 建立 Project ---
     const projectPayload = {
-      product_family: header["Product Family"],
-      product: header["Product"],
-      product_id: header["Product ID"], 
-      version: header["Version"],
-      qr: header["QR"],
-      sample_size: String(header["Sample Size"]),
-      owner: header["Owner"],      
-      remark: header["Remark"] || "",   
+      product_family: String(header["Product Family"]),
+      product: String(header["Product"]),
+      product_id: String(header["Product ID"]),
+      version: String(header["Version"]),
+      qr: String(header["QR"]),
+      sample_size: String(header["Sample Size"]), // 如果後端是字串就維持，若是數字請用 parseInt
+      owner: String(header["Owner"]),
+      remark: String(header["Remark"] || ""),
       status: "Active"
     };
 
@@ -411,61 +413,77 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     });
 
     if (!projRes.ok) {
-      const err = await projRes.json();
-      throw new Error(err.detail || "Failed to create the main project form");    // 建立專案失敗
+      const errData = await projRes.json();
+      // 解決 [object Object] 問題，提取後端報錯 detail
+      const errMsg = typeof errData.detail === 'object' ? JSON.stringify(errData.detail) : errData.detail;
+      throw new Error(`專案建立失敗: ${errMsg}`);
     }
-    
+
     const savedProj = await projRes.json();
-    const projectId = savedProj.project_id; // 獲取後端生成的 ID
+    const projectId = savedProj.project_id;
 
-    // --- STEP 2: 依序建立 Run Cards (解決順序跳亂問題) ---
-    let savedCount = 0;
+    // --- STEP 2 & 3: 建立 Run Cards 與 Tasks ---
+    let runCardCount = 0;
+    let taskCount = 0;
 
-    // 使用 for...of 迴圈代替 forEach，這能保證 await 依序等待，不會亂掉
     for (const lot of lots) {
-      for (const stress of lot.stresses) {
-        for (const row of stress.rowData) {
-          
-          // ⚠️ 對齊後端欄位名稱 (根據你的 pgAdmin 截圖)
-          const runCardPayload = {
-            project_id: projectId,
-            lot_id: String(lot.lotId),
-            stress: row.stress || stress.stressName || "", 
-            type: row.type || "",
-            operation: row.operation || "",
-            condition: row.condition || "",
-            // 注意：這裡必須與你後端 schemas/run_card.py 定義的變數名稱一致
-            program_name: row.programName || "", 
-            test_program: row.testProgram || "",
-            test_script: row.testScript || "",
-            unit_qty: parseInt(row.qty, 10) || 0,
-            status: "Pending",
-            created_by: header["Owner"] // 帶入目前的創建人
-          };
+      for (const stressGroup of lot.stresses) {
+        
+        // 建立 Run Card Payload
+        const runCardPayload = {
+          project_id: projectId,
+          lot_id: String(lot.lotId || "New LOT"),
+          stress: String(stressGroup.stressName || "New Stress"),
+          status: "Init",
+          created_by: String(header["Owner"])
+        };
 
-          const runCardRes = await fetch(`${API_BASE}/run-cards/`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(runCardPayload),
-          });
+        const rcRes = await fetch(`${API_BASE}/run-cards/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(runCardPayload),
+        });
 
-          if (runCardRes.ok) {
-            savedCount++;
-          } else {
-            console.error(`Lot ${lot.lotId} Save failed:`, await runCardRes.text());
+        if (rcRes.ok) {
+          const savedRC = await rcRes.json();
+          const runCardId = savedRC.run_card_id;
+          runCardCount++;
+
+          // --- STEP 3: 建立 Tasks ---
+          for (const [idx, row] of stressGroup.rowData.entries()) {
+            const taskPayload = {
+              run_card_id: parseInt(runCardId),
+              sequence_order: idx + 1,
+              type: String(row.type || ""),
+              operation: String(row.operation || ""),
+              condition: String(row.condition || ""),
+              unit_qty: row.qty ? parseInt(row.qty) : 0, // 💡 強制轉數字，修復 422
+              hardware: String(row.hardware || ""),
+              test_program: String(row.testProgram || ""),
+              program_name: String(row.programName || ""),
+              test_script: String(row.testScript || ""),
+              status: "Wait",
+              created_by: String(header["Owner"])
+            };
+
+            const tRes = await fetch(`${API_BASE}/tasks/`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(taskPayload),
+            });
+
+            if (tRes.ok) taskCount++;
           }
         }
       }
     }
 
-    alert(`✅ Save successful!\n project has been created and  ${savedCount} Run Cards have been saved`);
-    
-    // 跳轉頁面
+    alert(`✅ 儲存成功！\nProject ID: ${projectId}\nRun Cards: ${runCardCount}\nTasks: ${taskCount}`);
     window.location.hash = "/list";
 
   } catch (error) {
-    console.error("Save failed:", error); // 儲存失敗
-    alert(`❌ An error occurred during the save process: ${error.message}`); // 儲存過程發生錯誤
+    console.error("Save failed:", error);
+    alert(`❌ 發生錯誤: ${error.message}`);
   }
 };
   // 5. AG Grid Columns
@@ -589,8 +607,21 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       {/* LOT Tabs */}
       <div className="lot-tabs-container" style={{ margin: "0", padding: "0", gap: "0px", display: "flex", alignItems: "flex-end" }}>
         {lots.map((lot) => (
-          <div key={lot.id} className={`lot-tab-wrapper ${activeLotId === lot.id ? "active" : ""}`} onClick={() => setActiveLotId(lot.id)} style={{ padding: "4px 10px", borderBottom: activeLotId === lot.id ? "2px solid #007bff" : "none" }}>
-            <span style={{ fontSize: "12px", fontWeight: activeLotId === lot.id ? "bold" : "normal" }}>{lot.lotId || "New LOT"}</span>
+          <div key={lot.id}
+          className={`lot-tab-wrapper ${activeLotId === lot.id ? "active" : ""}`} 
+          onClick={() => setActiveLotId(lot.id)} 
+          style={{ 
+              padding: "4px 10px", 
+              borderBottom: activeLotId === lot.id ? "2px solid #007bff" : "none",
+              display: "flex",
+              alignItems: "center",
+              maxWidth: "150px", // 限制分頁最大寬度
+              minWidth: "80px",
+              cursor: "pointer"
+            }}
+          >
+            <span style={{ fontSize: "12px", fontWeight: activeLotId === lot.id ? "bold" : "normal",whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1}}>
+              {lot.lotId || "New LOT"}</span>
             <button className="lot-tab-close" onClick={(e) => { e.stopPropagation(); deleteLot(lot.id); }}>×</button>
           </div>
         ))}
@@ -640,10 +671,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
             </div>
           </div>
 
-          {/* --- 方案二核心：左側邊欄佈局 --- */}
+          {/* --- STRESS LIST：左側邊欄佈局 --- */}
           <div style={{ display: "flex", border: "1px solid #e0e0e0", minHeight: "500px", background: "#fff", borderRadius: "4px", overflow: "hidden" }}>
-                       
-            {/* 🚀 精緻側邊欄 */}
+            {/*  精緻側邊欄 */}
             <div style={{ 
               width: isSidebarCollapsed ? "40px" : "150px", 
               borderRight: "1px solid #e0e0e0", 
@@ -653,7 +683,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
               transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
               position: "relative"
             }}>
-              
               {/* 🚀 精緻收合按鈕 */}
               <div 
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -663,7 +692,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                   borderBottom: "1px solid #e0e0e0", letterSpacing: "1px"
                 }}
               >
-                {isSidebarCollapsed ? "▶" : "◀ COLLAPSE"}
+                {isSidebarCollapsed ? "▶" : "◀ Stress List"}
               </div>
 
               {!isSidebarCollapsed ? (
@@ -742,12 +771,10 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                       </div>
                     ))}
                   </div>
-
                   {/* 🚀 Add Stress 按鈕：緊跟在列表下方 */}
                   <div 
                     onClick={() => addStressToLot(lot.id)}
-                    style={{ 
-                      padding: "10px 12px", 
+                    style={{ padding: "8px 33px", 
                       fontSize: "12px", 
                       color: "#007bff", 
                       cursor: "pointer",
@@ -761,9 +788,9 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                     onMouseOver={(e) => { e.currentTarget.style.background = "#f8f9fa"; }}
                     onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span style={{ fontSize: "16px", fontWeight: "bold" }}>+</span>
-                    <span>Add Stress</span>
-                  </div>
+                    <span style={{ fontSize: "12px", fontWeight: "bold" }}>+</span>
+                    <span style={{ fontSize: "11px", fontWeight: "bold" }}>Add Stress</span>
+                 </div>
                 </div>
               ) : (
                 /* 🚀 收合狀態：更精緻的方塊感 */
@@ -805,13 +832,14 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
                     <AgGridReact
                       rowData={s.rowData}
                       columnDefs={columnDefs}
+                      // 💡 關鍵：必須把當前的 lotId 和 stressId 傳給 context
+                      context={{ lotId: lot.id, stressId: s.id }} 
+                      onColumnResized={onColumnResized}
+                      onGridReady={onGridReady}
+                      onRowDragEnd={(e) => onRowDragEnd(e, lot.id, s.id)}
                       headerHeight={25}
                       domLayout="autoHeight"
                       rowDragManaged={true} animateRows={true}
-                      context={{ lotId: lot.id, stressId: s.id }}
-                      onRowDragEnd={(e) => onRowDragEnd(e, lot.id, s.id)}
-                      onGridReady={onGridReady}
-                      onColumnResized={onColumnResized}
                       getRowStyle={(params) => {
                         if (params.data.startTime === "SKIPPED") {
                           return { backgroundColor: "#e3e5e8ff", color: "#94a3b8", fontStyle: "italic" };

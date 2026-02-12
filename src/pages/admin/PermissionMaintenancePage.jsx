@@ -48,7 +48,7 @@ const PermissionMaintenancePage = () => {
         is_active: currentUserData.is_active
       });
       
-      alert(`User: ${currentUserData.user_name} permissions have been updated`);
+      alert(`✅User: ${currentUserData.user_name} permissions have been updated`);
       fetchUsers(); // 重新整理清單
     } catch (error) {
       console.error("Update failed:", error); 
