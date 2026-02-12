@@ -12,7 +12,7 @@ import { Copy, Trash2, Bookmark, Star} from "lucide-react";
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 // 使用 window.location.hostname 會自動抓取「你現在網址列顯示的那個 IP」
-const API_BASE = `http://${window.location.hostname}:9000`;
+const API_BASE = `http://${window.location.hostname}:8000`;
 
 // --- REMARK 彈窗編輯組件 ---
 const RemarkModal = ({ isOpen, value, onSave, onClose }) => {
@@ -213,38 +213,47 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
 
   // 2. 讀取資料 同步讀取資料庫 stress_test_settings 配置
+// 2. 讀取資料 同步讀取資料庫 stress_test_settings 配置
   useEffect(() => {
-    fetch(`${API_BASE}/stress/`)
+    fetch(`${API_BASE}/stress-test-settings/`)
       .then(res => res.json())
       .then(dbStresses => {
         const map = {};
+        // 注意：dbStresses 是一個平坦的清單，我們需要根據 'stress' 欄位進行分組
         dbStresses.forEach(item => {
-          // 將資料庫格式轉換為前端表格需要的格式
-          map[item.name] = item.steps.map(s => ({
-            Type: s.type,
-            Operation: s.operation,
-            Condition: s.condition
-          }));
+          const stressName = item.stress; // 後端欄位名稱是 stress
+          
+          if (!map[stressName]) {
+            map[stressName] = [];
+          }
+          
+          // 將資料庫的小寫欄位轉換為你前端表格預期的大寫 Key (Type, Operation, Condition)
+          map[stressName].push({
+            Type: item.type || "",
+            Operation: item.operation || "",
+            Condition: item.condition || ""
+          });
         });
+
+        // 確保步驟是按照 sequence_order 排序（如果有需要的話）
+        // 如果後端沒排好，這裡可以補一個 sort
         setStressMeta(map);
       })
       .catch(err => console.error("Stress DB sync failed:", err));
-    // 讀取資料 同步讀取資料庫 product family 配置
+
+    // --- 以下是你原有的 products 讀取邏輯，保持不變 ---
     fetch(`${API_BASE}/products/`)
       .then(res => res.json())
       .then(dbData => {
-        // 1. 提取唯一的 Family 名稱，格式化成下拉選單需要的結構
         const uniqueFamilies = [...new Set(dbData.map(p => p.product_family))].filter(Boolean).map(f => ({
           id: f, 
           name: f
         }));
-        // 2. 處理產品列表，對應 familyId
         const products = dbData.map(p => ({
           id: p.id,
           familyId: p.product_family,
           productName: p.product_name,
         }));
-
         setConfigMaster({ productFamilies: uniqueFamilies, products: products });
       })
       .catch(err => console.error("Database sync failed:", err));
@@ -252,7 +261,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     const savedTemplates = JSON.parse(localStorage.getItem("runcard_templates") || "[]");
     setTemplates(savedTemplates);
 
-    // --- 新增：編輯模式載入舊資料 ---
     if (pIdx !== null) {
       const allProjects = JSON.parse(localStorage.getItem("all_projects") || "[]");
       const target = allProjects[parseInt(pIdx)];
@@ -264,7 +272,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
         }
       }
     }
-  }, [pIdx]); // 監聽 pIdx 確保重載
+  }, [pIdx]);
 
   // 3. 操作邏輯
   const addLot = () => { const newLot = createInitialLot(); setLots((p) => [...p, newLot]); setActiveLotId(newLot.id); };
@@ -382,8 +390,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     }
   };
 
-  // 4. 最終儲存：將整個專案（Header + LOTs + Run Cards）送出
-  const handleSave = async () => {
+const handleSave = async () => {
   // 1. 必填檢查
   const requiredFields = ["Product Family", "Product", "Product ID", "Version", "QR", "Sample Size", "Owner"];
   for (let field of requiredFields) {
@@ -397,10 +404,10 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     const projectPayload = {
       product_family: String(header["Product Family"]),
       product: String(header["Product"]),
-      product_id: String(header["Product ID"]),
+      product_id: String(header["Product ID"]), // 已支援中英文
       version: String(header["Version"]),
       qr: String(header["QR"]),
-      sample_size: String(header["Sample Size"]), // 如果後端是字串就維持，若是數字請用 parseInt
+      sample_size: String(header["Sample Size"]),
       owner: String(header["Owner"]),
       remark: String(header["Remark"] || ""),
       status: "Active"
@@ -414,9 +421,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
     if (!projRes.ok) {
       const errData = await projRes.json();
-      // 解決 [object Object] 問題，提取後端報錯 detail
-      const errMsg = typeof errData.detail === 'object' ? JSON.stringify(errData.detail) : errData.detail;
-      throw new Error(`專案建立失敗: ${errMsg}`);
+      throw new Error(`專案建立失敗: ${errData.detail || "未知錯誤"}`);
     }
 
     const savedProj = await projRes.json();
@@ -427,13 +432,15 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     let taskCount = 0;
 
     for (const lot of lots) {
-      for (const stressGroup of lot.stresses) {
-        
+      // 確保 lot.stresses 是一個陣列
+      const stresses = lot.stresses || []; 
+      
+      for (const stressGroup of stresses) {
         // 建立 Run Card Payload
         const runCardPayload = {
           project_id: projectId,
           lot_id: String(lot.lotId || "New LOT"),
-          stress: String(stressGroup.stressName || "New Stress"),
+          stress: String(stressGroup.stressName || "New Stress"), // 對應後端 stress 欄位
           status: "Init",
           created_by: String(header["Owner"])
         };
@@ -444,35 +451,46 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
           body: JSON.stringify(runCardPayload),
         });
 
-        if (rcRes.ok) {
-          const savedRC = await rcRes.json();
-          const runCardId = savedRC.run_card_id;
-          runCardCount++;
+        if (!rcRes.ok) {
+          const errData = await rcRes.json();
+          // 如果這裡失敗（例如 Stress 名稱沒在資料庫裡），直接 throw 報錯
+          throw new Error(`RunCard 建立失敗 (${stressGroup.stressName}): ${errData.detail}`);
+        }
 
-          // --- STEP 3: 建立 Tasks ---
-          for (const [idx, row] of stressGroup.rowData.entries()) {
-            const taskPayload = {
-              run_card_id: parseInt(runCardId),
-              sequence_order: idx + 1,
-              type: String(row.type || ""),
-              operation: String(row.operation || ""),
-              condition: String(row.condition || ""),
-              unit_qty: row.qty ? parseInt(row.qty) : 0, // 💡 強制轉數字，修復 422
-              hardware: String(row.hardware || ""),
-              test_program: String(row.testProgram || ""),
-              program_name: String(row.programName || ""),
-              test_script: String(row.testScript || ""),
-              status: "Wait",
-              created_by: String(header["Owner"])
-            };
+        const savedRC = await rcRes.json();
+        const runCardId = savedRC.run_card_id;
+        runCardCount++;
 
-            const tRes = await fetch(`${API_BASE}/tasks/`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(taskPayload),
-            });
+        // --- STEP 3: 建立 Tasks ---
+        const rows = stressGroup.rowData || [];
+        for (const [idx, row] of rows.entries()) {
+          const taskPayload = {
+            run_card_id: parseInt(runCardId),
+            sequence_order: idx + 1,
+            type: String(row.type || ""),
+            operation: String(row.operation || ""),
+            condition: String(row.condition || ""),
+            unit_qty: row.qty ? parseInt(row.qty) : 0, // 強制轉數字
+            hardware: String(row.hardware || ""),
+            test_program: String(row.testProgram || ""),
+            program_name: String(row.programName || ""),
+            test_script: String(row.testScript || ""),
+            status: "Wait",
+            created_by: String(header["Owner"])
+          };
 
-            if (tRes.ok) taskCount++;
+          const tRes = await fetch(`${API_BASE}/tasks/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(taskPayload),
+          });
+
+          if (!tRes.ok) {
+            const errData = await tRes.json();
+            console.error("Task failed:", errData);
+            // Task 失敗可以選擇記錄但不中斷，或直接 throw
+          } else {
+            taskCount++;
           }
         }
       }

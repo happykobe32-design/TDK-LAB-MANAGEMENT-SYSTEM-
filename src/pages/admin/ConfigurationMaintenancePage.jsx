@@ -3,7 +3,7 @@ import { FaTrashAlt, FaEdit, FaPlus, FaDatabase } from "react-icons/fa";
 import axios from "axios";
 
 // API 基礎路徑 (結尾不帶斜線) 使用 window.location.hostname 會自動抓取「你現在網址列顯示的那個 IP」
-const API_BASE = `http://${window.location.hostname}:9000/products`;
+const API_BASE = `http://${window.location.hostname}:8000/products`;
 
 export default function ConfigurationMaintenancePage() {
   const [products, setProducts] = useState([]); 

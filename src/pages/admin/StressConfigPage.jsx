@@ -1,239 +1,260 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, Save, ChevronRight, FileText, AlertCircle, X } from 'lucide-react';
+import { Trash2, Plus, Save, ChevronRight, X } from 'lucide-react';
 
-// 使用 window.location.hostname 會自動抓取「你現在網址列顯示的那個 IP」
-const API_BASE = `http://${window.location.hostname}:9000`;
+const API_BASE = `http://${window.location.hostname}:8000`;
 
 const StressConfigPage = () => {
-    const [data, setData] = useState([]); // 存儲分組後的 Stress 資料
-    const [activeStressName, setActiveStressName] = useState(null); // 以 stress 欄位值作為選中標記
+    const [data, setData] = useState([]); 
+    const [activeStressName, setActiveStressName] = useState(null); 
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
-    // 1. 從資料庫抓取並初始化
+    const groupByStress = (rawList) => {
+        if (!Array.isArray(rawList)) return [];
+        const groups = {};
+        rawList.forEach(item => {
+            if (!groups[item.stress]) {
+                groups[item.stress] = { name: item.stress, steps: [] };
+            }
+            groups[item.stress].steps.push({
+                stress_test_id: item.stress_test_id,
+                type: item.type || "",
+                operation: item.operation || "",
+                condition: item.condition || "",
+                sequence_order: item.sequence_order || 0
+            });
+        });
+        const result = Object.values(groups);
+        result.forEach(g => g.steps.sort((a, b) => a.sequence_order - b.sequence_order));
+        return result;
+    };
+
     const fetchConfigs = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`${API_BASE}/stress/`);
-            const json = await res.json(); // 後端回傳 [{id, name, steps:[]}, ...]
-            setData(json);
-            if (json.length > 0 && !activeStressName) {
-                setActiveStressName(json[0].name);
+            const res = await fetch(`${API_BASE}/stress-test-settings/`);
+            if (!res.ok) throw new Error("無法取得設定資料");
+            const json = await res.json(); 
+            const formattedData = groupByStress(json);
+            setData(formattedData);
+            if (formattedData.length > 0 && !activeStressName) {
+                setActiveStressName(formattedData[0].name);
             }
         } catch (err) {
-            console.error("Fetch failed:", err);
-            alert("❌ 無法連接資料庫，請檢查後端服務。");
+            console.error("Fetch error:", err);
+            setData([]);
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => {
-        fetchConfigs();
-    }, []);
+    useEffect(() => { fetchConfigs(); }, []);
 
-    const currentStress = data.find(s => s.name === activeStressName);
+    const currentStress = data?.find(s => s.name === activeStressName);
 
-    // 2. 更新步驟欄位 (Local)
-    const updateStepField = (stepIndex, field, value) => {
-        const newData = data.map(s => {
-            if (s.name === activeStressName) {
-                const newSteps = [...s.steps];
-                newSteps[stepIndex][field] = value;
-                return { ...s, steps: newSteps };
-            }
-            return s;
-        });
-        setData(newData);
-    };
-
-    // 3. 新增步驟行 (Local)
-    const addStep = () => {
-        const newData = data.map(s => {
-            if (s.name === activeStressName) {
+    // 新增步驟
+    const addStep = (targetStressName = activeStressName) => {
+        if (!targetStressName) return;
+        setData(prev => prev.map(s => {
+            if (s.name === targetStressName) {
+                const steps = s.steps || [];
+                const nextOrder = steps.length > 0 
+                    ? Math.max(...steps.map(st => st.sequence_order)) + 1 
+                    : 0;
                 return {
                     ...s,
-                    steps: [...s.steps, { type: "", operation: "", condition: "", sequence_order: s.steps.length }]
+                    steps: [...steps, { type: "", operation: "", condition: "", sequence_order: nextOrder }]
                 };
             }
             return s;
-        });
-        setData(newData);
+        }));
     };
 
-    // 4. 刪除單一步驟 (Local - 需按 SAVE 才會同步資料庫)
-    const deleteStep = (index) => {
-        const newData = data.map(s => {
+    // 更新欄位
+    const updateField = (index, field, value) => {
+        setData(prev => prev.map(s => {
             if (s.name === activeStressName) {
-                const newSteps = s.steps.filter((_, i) => i !== index);
+                const newSteps = [...(s.steps || [])];
+                newSteps[index] = { ...newSteps[index], [field]: value };
                 return { ...s, steps: newSteps };
             }
             return s;
-        });
-        setData(newData);
+        }));
     };
 
-    // 5. 新增全新的 Stress 類別
-    const addNewStress = () => {
-        const name = window.prompt("請輸入新的 Stress 名稱 (例如: HTOL):");
-        if (!name) return;
-        if (data.find(s => s.name === name)) return alert("該名稱已存在！");
-
-        const newEntry = {
-            name: name,
-            steps: [{ type: "", operation: "", condition: "", sequence_order: 0 }]
-        };
-        setData([...data, newEntry]);
-        setActiveStressName(name);
-    };
-
-    // 6. 刪除整個 Stress 類別 (直接同步資料庫)
-    const handleDeleteStressGroup = async (stressName) => {
-        if (!window.confirm(`確定要刪除整個 "${stressName}" 及其所有步驟嗎？`)) return;
-
-        try {
-            const res = await fetch(`${API_BASE}/stress/${stressName}`, { method: 'DELETE' });
-            if (res.ok) {
-                const newData = data.filter(s => s.name !== stressName);
-                setData(newData);
-                if (activeStressName === stressName) {
-                    setActiveStressName(newData.length > 0 ? newData[0].name : null);
-                }
-            } else {
-                alert("刪除失敗");
-            }
-        } catch (err) {
-            alert("刪除出錯: " + err.message);
-        }
-    };
-
-    // 7. 儲存至資料庫 (同步 stress 欄位與 steps)
+    // 儲存邏輯
     const handleSave = async () => {
-        if (!currentStress) return;
+        if (!currentStress || !currentStress.steps) return;
         setIsSaving(true);
         try {
-            const payload = {
-                stress: currentStress.name, // 對應後端 stress 欄位
-                steps: currentStress.steps,
-                created_by: "Admin"
-            };
+            for (const step of currentStress.steps) {
+                // 如果是全空的步驟則跳過不存
+                if (!step.type && !step.operation && !step.condition) continue;
 
-            const res = await fetch(`${API_BASE}/stress/`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
+                const payload = {
+                    stress: currentStress.name,
+                    type: step.type || "N/A",
+                    operation: step.operation || "N/A",
+                    condition: step.condition || "N/A",
+                    sequence_order: parseInt(step.sequence_order) || 0
+                };
 
-            if (res.ok) {
-                alert(`✅ ${currentStress.name} 配置已成功儲存至資料庫`);
-                fetchConfigs(); 
-            } else {
-                const err = await res.json();
-                throw new Error(err.detail || "儲存失敗");
+                const url = step.stress_test_id 
+                    ? `${API_BASE}/stress-test-settings/${step.stress_test_id}` 
+                    : `${API_BASE}/stress-test-settings/`;
+                
+                const res = await fetch(url, {
+                    method: step.stress_test_id ? "PUT" : "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) throw new Error("儲存過程中發生錯誤");
             }
+            alert("✅ 儲存成功");
+            fetchConfigs();
         } catch (err) {
-            alert(`❌ 錯誤: ${err.message}`);
+            alert(`❌ 儲存失敗: ${err.message}`);
         } finally {
             setIsSaving(false);
         }
     };
 
-    if (loading) return <div className="p-5 text-center text-muted">Loading...</div>;
+    // 刪除步驟
+    const deleteStep = async (index, step) => {
+        if (!window.confirm("確定刪除此步驟？")) return;
+        if (step.stress_test_id) {
+            try {
+                await fetch(`${API_BASE}/stress-test-settings/${step.stress_test_id}`, { method: 'DELETE' });
+            } catch (e) { console.error("Delete failed"); }
+        }
+        setData(prev => prev.map(s => {
+            if (s.name === activeStressName) {
+                const filtered = (s.steps || []).filter((_, i) => i !== index);
+                return { ...s, steps: filtered.map((st, i) => ({ ...st, sequence_order: i })) };
+            }
+            return s;
+        }));
+    };
+
+    if (loading) return <div className="p-5 text-center text-muted">Loading configuration...</div>;
 
     return (
-        <div className="container-fluid py-2" style={{ backgroundColor: "#f8f9fa", minHeight: "100vh" }}>
+        <div className="container-fluid py-2" style={{ backgroundColor: "#f4f7f9", minHeight: "100vh" }}>
             {/* Header */}
-            <div className="mb-2 px-1 border-bottom pb-2 d-flex justify-content-between align-items-center">
-                <div className="text-muted small fw-bold" style={{ fontSize: '1rem' }}>
+            <div className="d-flex justify-content-between align-items-center mb-2 px-2">
+                <h6 className="mb-0 text-secondary fw-bold" style={{ letterSpacing: "1px" }}>
                     CONFIGURATION MAINTENANCE
-                </div>
-                {currentStress && (
-                    <button onClick={handleSave} disabled={isSaving} className="btn btn-success btn-sm px-4 d-flex align-items-center gap-2">
-                        {isSaving ? "SAVING..." : <><Save size={14} /> SAVE SETTINGS</>}
-                    </button>
-                )}
+                </h6>
+                <button 
+                    onClick={handleSave} 
+                    disabled={isSaving} 
+                    className={`btn btn-sm ${isSaving ? 'btn-secondary' : 'btn-success'} px-4 shadow-sm fw-bold`}
+                >
+                    <Save size={14} className="me-1" /> {isSaving ? "SAVING..." : "SAVE CHANGES"}
+                </button>
             </div>
 
             <div className="row g-2">
-                {/* 左側：Stress 列表 */}
-                <div className="col-md-2">
-                    <div className="card border shadow-sm">
+                {/* 左側 Stress List */}
+                <div className="col-md-3 col-lg-2">
+                    <div className="card border-0 shadow-sm rounded-3 overflow-hidden">
                         <div className="list-group list-group-flush">
-                            <div className="list-group-item bg-light py-2 small fw-bold text-secondary">Stress List</div>
+                            <div className="list-group-item bg-light small fw-bold text-muted py-2">STRESS LIST</div>
                             {data.map(s => (
-                                <div 
-                                    key={s.name}
-                                    className={`list-group-item list-group-item-action py-2 d-flex justify-content-between align-items-center p-2 ${activeStressName === s.name ? 'bg-primary text-white fw-bold' : 'text-dark small'}`}
-                                    style={{ cursor: 'pointer' }}
+                                <button 
+                                    key={s.name} 
+                                    className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center border-0 py-2 small ${activeStressName === s.name ? 'bg-primary text-white shadow-sm' : ''}`}
                                     onClick={() => setActiveStressName(s.name)}
                                 >
                                     <span className="text-truncate">{s.name}</span>
-                                    <div className="d-flex align-items-center gap-1">
-                                        <button 
-                                            className={`btn btn-link p-0 ${activeStressName === s.name ? 'text-white' : 'text-danger'} opacity-50 hover-opacity-100`}
-                                            onClick={(e) => { e.stopPropagation(); handleDeleteStressGroup(s.name); }}
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                        <ChevronRight size={12} className={activeStressName === s.name ? 'opacity-100' : 'opacity-25'} />
-                                    </div>
-                                </div>
+                                    <ChevronRight size={12} opacity={activeStressName === s.name ? 1 : 0.3} />
+                                </button>
                             ))}
-                            <button onClick={addNewStress} className="list-group-item list-group-item-action py-2 text-primary small fw-bold text-center border-top">
-                                <Plus size={14} /> Add Stress
+                            <button 
+                                className="list-group-item list-group-item-action text-primary small py-3 fw-bold border-0 text-center"
+                                onClick={() => {
+                                    const name = prompt("Enter Stress Name:");
+                                    if (name) {
+                                        const newEntry = { name, steps: [{ type: "", operation: "", condition: "", sequence_order: 0 }] };
+                                        setData([...data, newEntry]);
+                                        setActiveStressName(name);
+                                    }
+                                }}
+                            >
+                                <Plus size={14} className="me-1" /> Add New Stress
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {/* 右側：編輯表格 */}
-                <div className="col-md-10">
-                    {!currentStress ? (
-                        <div className="card p-5 text-center text-muted border-dashed">
-                            <AlertCircle className="mx-auto mb-2" size={32} />
-                            Please select a Stress from the list.
-                        </div>
-                    ) : (
-                        <div className="card border shadow-sm rounded-1">
-                            <div className="card-header bg-white py-2 d-flex align-items-center gap-2">
-                                <FileText size={16} className="text-muted" />
+                {/* 右側 Workflow 編輯區 */}
+                <div className="col-md-9 col-lg-10">
+                    {currentStress ? (
+                        <div className="card border-0 shadow-sm rounded-3">
+                            <div className="card-header bg-white py-2 border-bottom">
+                                <span className="badge bg-soft-primary text-primary me-2">Active</span>
                                 <span className="fw-bold small">{activeStressName} Workflow</span>
                             </div>
                             <div className="table-responsive">
-                                <table className="table table-bordered table-sm mb-0">
+                                <table className="table table-sm table-hover align-middle mb-0">
                                     <thead className="table-light">
-                                        <tr className="small text-secondary">
-                                            <th className="text-center" style={{ width: "50px" }}>STEP</th>
-                                            <th>TYPE</th>
-                                            <th>OPERATION</th>
-                                            <th>CONDITION</th>
-                                            <th className="text-center" style={{ width: "50px" }}>DEL</th>
+                                        <tr style={{ fontSize: "0.75rem", textTransform: "uppercase" }}>
+                                            <th className="ps-3" style={{ width: "60px" }}>Step</th>
+                                            <th>Type</th>
+                                            <th>Operation</th>
+                                            <th>Condition</th>
+                                            <th className="text-center" style={{ width: "60px" }}>Del</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {currentStress.steps.map((step, index) => (
-                                            <tr key={index}>
-                                                <td className="text-center bg-light fw-bold small">{index + 1}</td>
-                                                <td className="p-0"><input className="form-control form-control-sm border-0 bg-transparent shadow-none" value={step.type || ""} onChange={(e) => updateStepField(index, 'type', e.target.value)} /></td>
-                                                <td className="p-0"><input className="form-control form-control-sm border-0 bg-transparent shadow-none" value={step.operation || ""} onChange={(e) => updateStepField(index, 'operation', e.target.value)} /></td>
-                                                <td className="p-0"><input className="form-control form-control-sm border-0 bg-transparent shadow-none" value={step.condition || ""} onChange={(e) => updateStepField(index, 'condition', e.target.value)} /></td>
+                                        {(currentStress.steps || []).map((step, idx) => (
+                                            <tr key={idx}>
+                                                <td className="ps-3 text-muted small fw-bold">{idx + 1}</td>
+                                                <td className="p-1">
+                                                    <input className="form-control form-control-sm border-0 bg-light" value={step.type} onChange={e => updateField(idx, 'type', e.target.value)} placeholder="Type..." />
+                                                </td>
+                                                <td className="p-1">
+                                                    <input className="form-control form-control-sm border-0 bg-light" value={step.operation} onChange={e => updateField(idx, 'operation', e.target.value)} placeholder="Operation..." />
+                                                </td>
+                                                <td className="p-1">
+                                                    <input className="form-control form-control-sm border-0 bg-light" value={step.condition} onChange={e => updateField(idx, 'condition', e.target.value)} placeholder="Condition..." />
+                                                </td>
                                                 <td className="text-center">
-                                                    <button onClick={() => deleteStep(index)} className="btn btn-link text-danger p-0 shadow-none"><Trash2 size={14} /></button>
+                                                    <button className="btn btn-link btn-sm text-danger p-0" onClick={() => deleteStep(idx, step)}>
+                                                        <Trash2 size={14} />
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}
-                                        <tr>
-                                            <td colSpan="5" className="p-0">
-                                                <button onClick={addStep} className="btn btn-link btn-sm w-100 text-decoration-none py-2">+ Insert Step</button>
-                                            </td>
-                                        </tr>
                                     </tbody>
                                 </table>
+                                <div 
+                                    className="text-center py-2 bg-white border-top small text-primary fw-bold" 
+                                    style={{ cursor: 'pointer', transition: 'background 0.2s' }}
+                                    onClick={() => addStep()}
+                                    onMouseOver={(e) => e.target.style.background = "#f8f9fa"}
+                                    onMouseOut={(e) => e.target.style.background = "white"}
+                                >
+                                    <Plus size={14} className="me-1" /> Insert New Step
+                                </div>
                             </div>
+                        </div>
+                    ) : (
+                        <div className="d-flex flex-column align-items-center justify-content-center h-100 py-5 text-muted">
+                            <Plus size={48} className="mb-2" opacity={0.2} />
+                            <p className="small">Select a Stress from the list to start editing</p>
                         </div>
                     )}
                 </div>
             </div>
+            
+            <style dangerouslySetInnerHTML={{ __html: `
+                .bg-soft-primary { background-color: #e7f1ff; }
+                .form-control-sm:focus { background-color: #fff !important; box-shadow: none; border: 1px solid #0d6efd !important; }
+                .list-group-item.active { background-color: #0d6efd !important; }
+                table input::placeholder { color: #ccc; font-size: 0.75rem; }
+            `}} />
         </div>
     );
 };
