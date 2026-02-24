@@ -501,8 +501,8 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
                                 }}
                                 onClick={() => {
                                     // 跳轉時務必帶上 stress 參數，CheckInOutPage 才能接收到
-                                    navigate(`/checkinout?pIdx=${r.pIdx}&lIdx=${r.lIdx}&stress=${encodeURIComponent(r.stress)}`);
-                                  }}
+                                    navigate(`/checkinout?pIdx=${r.pIdx}&lotId=${encodeURIComponent(r.lotId)}&stress=${encodeURIComponent(r.stress)}`);
+                                }}
                               >
                                 {r[col.key] || "(Empty QR)"}
                               </span>

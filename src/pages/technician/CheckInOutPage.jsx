@@ -7,122 +7,172 @@ import { useLocation } from "react-router-dom";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
+const API_BASE = `http://${window.location.hostname}:8000`;
+
 export default function CheckInOutPage() {
   const location = useLocation();
-  const [allProjects, setAllProjects] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
-  const [activeLotTab, setActiveLotTab] = useState(0);
-  const [activeStressIdx, setActiveStressIdx] = useState(null);
+  const [currentProject, setCurrentProject] = useState(null);
+  const [activeLot, setActiveLot] = useState(null);
+  const [targetStress, setTargetStress] = useState(null);
   const [configMaster, setConfigMaster] = useState(null);
   
-  // 獲取當前使用者角色
   const userRole = sessionStorage.getItem("logged_role"); 
   const isTechnician = userRole === "technician";
   const isAdminOrEngineer = userRole === "admin" || userRole === "engineer";
 
-  useEffect(() => {
-    const data = JSON.parse(localStorage.getItem("all_projects") || "[]");
-    const config = JSON.parse(localStorage.getItem("config_master") || "null");
-    setConfigMaster(config);
-
+  const loadDataFromBackend = useCallback(async () => {
     const params = new URLSearchParams(location.search);
     const pIdx = params.get("pIdx");
-    const lIdx = params.get("lIdx");
-    const sIdx = params.get("sIdx");
-    const urlStress = params.get("stress");
+    const urlStressName = params.get("stress");
+    const urlLotId = params.get("lotId");
 
-    if (data.length > 0) {
-      setAllProjects(data);
-      
-      if (pIdx !== null) {
-        const target = data[parseInt(pIdx)];
-        if (target) {
-          const l = lIdx !== null ? parseInt(lIdx) : 0;
-          const s = sIdx !== null ? parseInt(sIdx) : 0;
-          setSelectedId(target.id);
-          setActiveLotTab(l);
-          setActiveStressIdx(s);
-          
-          localStorage.setItem("last_viewed_project_id", target.id);
-          localStorage.setItem("last_viewed_lIdx", l);
-          localStorage.setItem("last_viewed_sIdx", s);
-          if (urlStress) localStorage.setItem("last_viewed_stress_name", urlStress);
-          return;
-        }
+    try {
+      const [pRes, rcRes, tRes, sListRes] = await Promise.all([
+        fetch(`${API_BASE}/projects/`),
+        fetch(`${API_BASE}/run_cards/`),
+        fetch(`${API_BASE}/tasks/`),
+        fetch(`${API_BASE}/stress/`)
+      ]);
+
+      const allP = await pRes.json();
+      const allRC = await rcRes.json();
+      const allT = await tRes.json();
+      const allS = await sListRes.json();
+
+      const proj = allP.find(p => p.project_id === parseInt(pIdx));
+      if (proj) {
+        setCurrentProject({
+          header: {
+            "Product Family": proj.product_family,
+            "Product": proj.product,
+            "Version": proj.version,
+            "Sample Size": proj.sample_size,
+            "QR": proj.qr,
+            "Owner": proj.owner,
+            "Remark": proj.remark
+          },
+          productFamilyName: proj.product_family
+        });
       }
-      
-      const lastId = localStorage.getItem("last_viewed_project_id");
-      const lastL = localStorage.getItem("last_viewed_lIdx");
-      const lastS = localStorage.getItem("last_viewed_sIdx");
-      
-      const exists = data.find(p => p.id === lastId);
-      if (exists) {
-        setSelectedId(lastId);
-        setActiveLotTab(lastL !== null ? parseInt(lastL) : 0);
-        setActiveStressIdx(lastS !== null ? parseInt(lastS) : 0);
-      } else {
-        setSelectedId(data[0].id);
-        setActiveLotTab(0);
-        setActiveStressIdx(0);
+
+      const stressObj = allS.find(s => s.stress === urlStressName);
+      const rc = allRC.find(r => 
+        r.project_id === parseInt(pIdx) && 
+        r.stress_id === stressObj?.stress_id &&
+        (urlLotId ? r.lot_id === urlLotId : true)
+      );
+
+      if (rc) {
+        setActiveLot({ lotId: rc.lot_id, id: rc.run_card_id });
+        const relatedTasks = allT
+          .filter(t => t.run_card_id === rc.run_card_id)
+          .sort((a, b) => (a.sequence_order || 0) - (b.sequence_order || 0))
+          .map(t => ({
+            ...t,
+            _rid: String(t.task_id), 
+            startTime: t.check_in_time,
+            endTime: t.check_out_time,
+            qty: t.unit_qty,
+            programName: t.program_name,
+            testProgram: t.test_program,
+            testScript: t.test_script,
+            status: t.status 
+          }));
+
+        setTargetStress({
+          id: rc.run_card_id,
+          stress: urlStressName,
+          rowData: relatedTasks
+        });
       }
+    } catch (err) {
+      console.error("API Load Error:", err);
     }
   }, [location.search]);
 
-  const currentProject = useMemo(() => allProjects.find(p => p.id === selectedId), [allProjects, selectedId]);
-  const activeLot = currentProject?.lots[activeLotTab];
+  useEffect(() => {
+    const config = JSON.parse(localStorage.getItem("config_master") || "null");
+    setConfigMaster(config);
+    loadDataFromBackend();
+  }, [loadDataFromBackend]);
 
-  const targetStress = useMemo(() => {
-    if (!activeLot) return null;
-    if (activeStressIdx !== null && activeLot.stresses[activeStressIdx]) {
-      return activeLot.stresses[activeStressIdx];
-    }
-    return activeLot.stresses[0];
-  }, [activeLot, activeStressIdx]);
+  const getRowId = useCallback((params) => String(params.data._rid), []);
 
-  const getRowId = useCallback((params) => params.data._rid, []);
-
-  // 核心自動存檔與同步邏輯
-  const syncUpdate = useCallback((lotId, stressId, rid, patch) => {
-    setAllProjects(prev => {
-      const updated = prev.map(p => {
-        if (p.id !== selectedId) return p;
-        const newLots = p.lots.map(l => {
-          if (l.id !== lotId) return l;
-          return {
-            ...l,
-            stresses: l.stresses.map(s => s.id === stressId ? {
-              ...s, rowData: s.rowData.map(r => r._rid === rid ? { ...r, ...patch } : r)
-            } : s)
-          };
-        });
-        return { ...p, lots: newLots };
-      });
-      localStorage.setItem("all_projects", JSON.stringify(updated));
-      return updated;
+  const syncUpdate = useCallback(async (lotId, stressId, rid, patch) => {
+    setTargetStress(prev => {
+      if (!prev) return prev;
+      const newData = prev.rowData.map(r => r._rid === rid ? { ...r, ...patch } : r);
+      return { ...prev, rowData: newData };
     });
-  }, [selectedId]);
+
+    const backendPatch = {};
+    backendPatch.updated_by = sessionStorage.getItem("logged_user") || "Unknown User";
+
+    if ("startTime" in patch) backendPatch.check_in_time = patch.startTime;
+    if ("endTime" in patch) backendPatch.check_out_time = patch.endTime;
+    if ("qty" in patch) backendPatch.unit_qty = Number(patch.qty) || 0;
+    if ("hardware" in patch) backendPatch.hardware = patch.hardware;
+    if ("note" in patch) backendPatch.note = patch.note;
+    if ("type" in patch) backendPatch.type = patch.type;
+    if ("operation" in patch) backendPatch.operation = patch.operation;
+    if ("condition" in patch) backendPatch.condition = patch.condition;
+    if ("programName" in patch) backendPatch.program_name = patch.programName;
+    if ("testProgram" in patch) backendPatch.test_program = patch.testProgram;
+    if ("testScript" in patch) backendPatch.test_script = patch.testScript;
+    if ("status" in patch) backendPatch.status = patch.status;
+
+    try {
+      const response = await fetch(`${API_BASE}/tasks/${rid}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(backendPatch)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Backend Error Detail:", errorData);
+        throw new Error("Save Failed");
+      }
+    } catch (err) {
+      console.error("Sync Error:", err);
+      alert("存檔失敗，請檢查網路連線或後端欄位驗證。");
+    }
+  }, []);
 
   const columnDefs = useMemo(() => {
     const getCurrentInfo = () => {
       const user = sessionStorage.getItem("logged_user") || "Unknown";
       const now = new Date();
-      return `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}\n(${user})`;
+      const timeStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      return `${timeStr}\n(${user})`;
     };
 
-    // 權限檢查輔助函式
     const getEditable = (field) => {
         if (isAdminOrEngineer) return true;
-        if (isTechnician) {
-            return ["qty", "startTime", "endTime", "hardware", "note"].includes(field);
-        }
+        if (isTechnician) return ["qty", "startTime", "endTime", "hardware", "note"].includes(field);
         return false;
+    };
+
+    // --- 新增：找出當前應該操作的行索引 ---
+    const getActiveRowIndex = (api) => {
+      let activeIndex = 0;
+      for (let i = 0; i < api.getDisplayedRowCount(); i++) {
+        const rowData = api.getDisplayedRowAtIndex(i).data;
+        // 如果這一行已經完成 (有 endTime) 或者是被 SKIP 的，就看下一行
+        if (rowData.endTime || rowData.status === "SKIPPED") {
+          activeIndex = i + 1;
+          continue;
+        }
+        break;
+      }
+      return activeIndex;
     };
 
     const baseCols = [
       { 
         headerName: "STATUS", width: 75, pinned: "left",
         valueGetter: p => {
-            if (p.data.startTime === "SKIPPED") return "SKIPPED";
+            if (p.data.status === "SKIPPED") return "SKIPPED";
             return p.data.endTime ? "COMPLETED" : (p.data.startTime ? "IN-PROCESS" : "INIT");
         },
         cellRenderer: p => (
@@ -143,11 +193,8 @@ export default function CheckInOutPage() {
       { headerName: "Test Script", field: "testScript", width: 100, wrapText: true, autoHeight: true, editable: getEditable("testScript") },
       { headerName: "Units", field: "qty", width: 60, editable: getEditable("qty"), cellStyle: { background: "#fffbe6" } },
       {
-        headerName: "CHECK-IN",
-        field: "startTime",
-        width: 115,
+        headerName: "CHECK-IN", field: "startTime", width: 115,
         cellRenderer: p => {
-          if (p.data.startTime === "SKIPPED") return <div style={{ textAlign: "center", color: "#cbd5e1", fontSize: "10px", fontWeight: "bold" }}>SKIPPED</div>;
           if (p.value) {
             const parts = String(p.value).split('\n');
             return (
@@ -157,15 +204,24 @@ export default function CheckInOutPage() {
               </div>
             );
           }
+          if (p.data.status === "SKIPPED") return null; 
+          
           const rowIndex = p.node.rowIndex;
-          let canStart = rowIndex === 0 || (p.api.getDisplayedRowAtIndex(rowIndex - 1)?.data.endTime);
+          const prevRow = p.api.getDisplayedRowAtIndex(rowIndex - 1);
+          
+          // 邏輯：第一行 OR 前一行已完成(endTime) OR 前一行是 SKIPPED
+          let canStart = rowIndex === 0 || (prevRow?.data.endTime || prevRow?.data.status === "SKIPPED");
+          
           return (
             <button 
               disabled={!canStart}
               className={`op-btn ${canStart ? "start" : "disabled"}`} 
               onClick={() => {
                 if (window.confirm("Are you sure you want to START?")) {
-                  syncUpdate(activeLot.id, targetStress.id, p.data._rid, { startTime: getCurrentInfo() });
+                  syncUpdate(activeLot.id, targetStress.id, p.data._rid, { 
+                    startTime: getCurrentInfo(),
+                    status: "In Progress"
+                  });
                 }
               }}
             >▶ START</button>
@@ -173,11 +229,8 @@ export default function CheckInOutPage() {
         }
       },
       {
-        headerName: "CHECK-OUT",
-        field: "endTime",
-        width: 125,
+        headerName: "CHECK-OUT", field: "endTime", width: 125,
         cellRenderer: (params) => {
-          if (params.data.startTime === "SKIPPED") return <div style={{ textAlign: "center", color: "#cbd5e1", fontSize: "10px", fontWeight: "bold" }}>SKIPPED</div>;
           if (params.value) {
             const parts = String(params.value).split('\n');
             return (
@@ -187,14 +240,21 @@ export default function CheckInOutPage() {
               </div>
             );
           }
-          const canFinish = !!params.data.startTime && params.data.startTime !== "SKIPPED";
+          if (params.data.status === "SKIPPED") return null;
+
+          // 只有在已經按了 START (有了 startTime) 且還沒按 FINISH 時才能按
+          const canFinish = !!params.data.startTime && !params.data.endTime;
+          
           return (
             <button
               disabled={!canFinish}
               className={`op-btn ${canFinish ? "end" : "disabled"}`}
               onClick={() => {
                 if (window.confirm("Are you sure you want to FINISH?")) {
-                  syncUpdate(activeLot.id, targetStress.id, params.data._rid, { endTime: getCurrentInfo() });
+                  syncUpdate(activeLot.id, targetStress.id, params.data._rid, { 
+                    endTime: getCurrentInfo(),
+                    status: "Done"
+                  });
                 }
               }}
             >■ FINISH</button>
@@ -205,27 +265,41 @@ export default function CheckInOutPage() {
       { headerName: "Note", field: "note", width: 120, editable: getEditable("note"), cellStyle: { background: "#fffbe6" } },
     ];
 
-    // 如果是 Admin 或 Engineer，加入 Skip 按鈕
     if (isAdminOrEngineer) {
       baseCols.push({
-        headerName: "SKIP",
-        width: 60,
+        headerName: "SKIP", width: 60,
         cellRenderer: p => {
-          const isSkipped = p.data.startTime === "SKIPPED";
+          const isSkipped = p.data.status === "SKIPPED";
+          // --- 核心邏輯：判斷是否為未來步驟 ---
+          const activeIndex = getActiveRowIndex(p.api);
+          const isFutureRow = p.node.rowIndex > activeIndex;
+          const hasStarted = !!p.data.startTime && !isSkipped;
+          
+          // 如果是未來步驟，或者當前步驟已經 START 了，SKIP 都要反灰
+          const disableSkip = isFutureRow || hasStarted;
+
           return (
             <button 
+              disabled={disableSkip}
               style={{
                 width: "100%", height: "22px", fontSize: "9px", padding: "0",
-                background: isSkipped ? "#cbd5e1" : "#fff",
-                border: "1px solid #000", color: isSkipped ? "#fff" : "#000",
-                cursor: "pointer", fontWeight: "bold"
+                background: disableSkip ? "#f1f5f9" : (isSkipped ? "#cbd5e1" : "#fff"),
+                border: disableSkip ? "1px dashed #cbd5e1" : "1px solid #000", 
+                color: disableSkip ? "#cbd5e1" : (isSkipped ? "#fff" : "#000"),
+                cursor: disableSkip ? "not-allowed" : "pointer", 
+                fontWeight: "bold"
               }}
               onClick={() => {
                 if (isSkipped) {
-                  syncUpdate(activeLot.id, targetStress.id, p.data._rid, { startTime: "", endTime: "" });
+                  syncUpdate(activeLot.id, targetStress.id, p.data._rid, { startTime: "", endTime: "", status: "Init" });
                 } else {
                   if (window.confirm("Skip this step?")) {
-                    syncUpdate(activeLot.id, targetStress.id, p.data._rid, { startTime: "SKIPPED", endTime: "SKIPPED" });
+                    const skipInfo = getCurrentInfo();
+                    syncUpdate(activeLot.id, targetStress.id, p.data._rid, { 
+                      startTime: skipInfo, 
+                      endTime: skipInfo, 
+                      status: "SKIPPED" 
+                    });
                   }
                 }
               }}
@@ -243,19 +317,12 @@ export default function CheckInOutPage() {
   const renderWorkOrderHeader = () => {
     if (!currentProject) return null;
     const h = currentProject.header;
-    
     let pfDisplay = h["Product Family"];
     if (pfDisplay && pfDisplay.startsWith("PF_")) {
        const found = configMaster?.productFamilies?.find(f => f.id === pfDisplay);
        if (found) pfDisplay = found.name;
-       else if (currentProject.productFamilyName) pfDisplay = currentProject.productFamilyName;
     }
-
-    const stressName = targetStress?.stress || 
-                       (activeLot?.stresses && activeLot.stresses[activeStressIdx]?.stress) || 
-                       (new URLSearchParams(location.search)).get("stress") || 
-                       localStorage.getItem("last_viewed_stress_name") || "-";
-    
+    const stressName = targetStress?.stress || "-";
     const InfoBox = ({ label, value, color = "#000000ff", flex = 1 }) => (
       <div style={{ flex: flex, borderRight: "1px solid #000000ff", display: "flex", flexDirection: "column" }}>
         <div style={{ background: "#d7dbdeff", fontSize: "10px", fontWeight: "bold", padding: "2px 6px", borderBottom: "1px solid #000000ff", color: "#000000ff" }}>{label}</div>
@@ -275,7 +342,7 @@ export default function CheckInOutPage() {
         </div>
         <div style={{ display: "flex" }}>
           <InfoBox label="LOT NO." value={activeLot?.lotId} />
-          <InfoBox label="STRESS" value={stressName}  />         
+          <InfoBox label="STRESS" value={stressName}   />         
           <InfoBox label="REMARK" value={h["Remark"]} flex={2} />
         </div>
       </div>
@@ -286,7 +353,6 @@ export default function CheckInOutPage() {
     <div style={{ padding: "5px", background: "#ffffffff", minHeight: "100vh" }}>
       <div style={{ width: "100%", margin: "0 auto" }}>
         {renderWorkOrderHeader()}
-
         <div className="ag-theme-alpine custom-grid" style={{ width: "100%", overflow: "hidden" }}>
           {targetStress && (
             <AgGridReact
@@ -300,13 +366,13 @@ export default function CheckInOutPage() {
               stopEditingWhenCellsLoseFocus={true}
               defaultColDef={{ resizable: true, sortable: false }}
               onCellValueChanged={(p) => {
-                syncUpdate(activeLot.id, targetStress.id, p.data._rid, { [p.column.colId]: p.newValue });
+                const fieldName = p.column.colId;
+                syncUpdate(activeLot.id, targetStress.id, p.data._rid, { [fieldName]: p.newValue });
               }}
             />
           )}
         </div>
       </div>
-
       <style>{`
         .custom-grid { border: 1px solid #000000ff; border-radius: 0px; }
         .ag-theme-alpine { --ag-row-hover-color: #f8fafc; }
