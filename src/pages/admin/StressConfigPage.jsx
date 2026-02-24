@@ -93,9 +93,9 @@ const StressConfigPage = () => {
 
                 const payload = {
                     stress: currentStress.name,
-                    type: step.type || "N/A",
-                    operation: step.operation || "N/A",
-                    condition: step.condition || "N/A",
+                    type: step.type || "",
+                    operation: step.operation || "",
+                    condition: step.condition || "",
                     sequence_order: parseInt(step.sequence_order) || 0
                 };
 
@@ -182,7 +182,7 @@ const StressConfigPage = () => {
                                     }
                                 }}
                             >
-                                <Plus size={14} className="me-1" /> Add New Stress
+                                <Plus size={14} className="me-1" /> Add  Stress
                             </button>
                         </div>
                     </div>
@@ -236,7 +236,7 @@ const StressConfigPage = () => {
                                     onMouseOver={(e) => e.target.style.background = "#f8f9fa"}
                                     onMouseOut={(e) => e.target.style.background = "white"}
                                 >
-                                    <Plus size={14} className="me-1" /> Insert New Step
+                                    <Plus size={14} className="me-1" /> New Step
                                 </div>
                             </div>
                         </div>

@@ -445,7 +445,7 @@ const handleSave = async () => {
           created_by: String(header["Owner"])
         };
 
-        const rcRes = await fetch(`${API_BASE}/run-cards/`, {
+        const rcRes = await fetch(`${API_BASE}/run_cards/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(runCardPayload),
