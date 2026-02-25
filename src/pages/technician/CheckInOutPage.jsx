@@ -152,7 +152,6 @@ export default function CheckInOutPage() {
         if (isTechnician) return ["qty", "startTime", "endTime", "hardware", "note"].includes(field);
         return false;
     };
-
     // --- 新增：找出當前應該操作的行索引 ---
     const getActiveRowIndex = (api) => {
       let activeIndex = 0;
@@ -270,13 +269,10 @@ export default function CheckInOutPage() {
         headerName: "SKIP", width: 60,
         cellRenderer: p => {
           const isSkipped = p.data.status === "SKIPPED";
-          // --- 核心邏輯：判斷是否為未來步驟 ---
-          const activeIndex = getActiveRowIndex(p.api);
-          const isFutureRow = p.node.rowIndex > activeIndex;
-          const hasStarted = !!p.data.startTime && !isSkipped;
+          const hasStarted = !!p.data.startTime && !isSkipped; // 如果已經有開始時間且不是被跳過的，就代表開始做了
           
-          // 如果是未來步驟，或者當前步驟已經 START 了，SKIP 都要反灰
-          const disableSkip = isFutureRow || hasStarted;
+          // 邏輯：如果已經按了 START，則 SKIP 鈕要禁用
+          const disableSkip = hasStarted;
 
           return (
             <button 

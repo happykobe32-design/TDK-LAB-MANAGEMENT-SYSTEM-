@@ -11,8 +11,13 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
   const [stressList, setStressList] = useState([]); // 新增：存放 Stress 名稱對照表
   const [isDeleteMode, setIsDeleteMode] = useState(false);
  
-  //create跳轉
-  const handleAdvancedEdit = (row) => {navigate(`/create?pIdx=${row.pIdx}`)};
+  // --- 修改重點：Advanced Edit 跳轉邏輯 ---
+  const handleAdvancedEdit = (row) => {
+    // 帶入所有識別資訊，以便 Create 頁面讀取舊資料進行修改
+    const lot = encodeURIComponent(row.lotId);
+    const stress = encodeURIComponent(row.stress);
+    navigate(`/create?pIdx=${row.pIdx}&runCardId=${row.id}&lotId=${lot}&stress=${stress}`);
+  };
  
   // --- 篩選狀態 ---
   const [searchText, setSearchText] = useState("");
@@ -87,18 +92,17 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
  
   const loadData = useCallback(async () => {
     try {
-      // 確保這裡解構出來的變數名稱與下面使用的一致
       const [pRes, rRes, tRes, sRes] = await Promise.all([
         fetch(`${API_BASE}/projects/`),
         fetch(`${API_BASE}/run_cards/`),
         fetch(`${API_BASE}/tasks/`),
-        fetch(`${API_BASE}/stress/`) // 這裡對應到 sRes
+        fetch(`${API_BASE}/stress/`)
       ]);
  
       const pData = await pRes.json();
       const rData = await rRes.json();
       const tData = await tRes.json();
-      const sData = await sRes.json(); // 這裡現在能找到 sRes 了
+      const sData = await sRes.json();
      
       setProjects(Array.isArray(pData) ? pData : []);
       setRunCardsData(Array.isArray(rData) ? rData : []);
@@ -109,24 +113,36 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
     }
   }, []);
  
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    loadData();
+    const timer = setInterval(() => {
+      loadData();
+    }, 30000); 
+    return () => clearInterval(timer);
+  }, [loadData]);
  
-// --- 修改 2: allData 聚合邏輯，進行數字對照轉換 ---
   const allData = useMemo(() => {
     return runCardsData.map(rc => {
       const proj = projects.find(p => p.project_id === rc.project_id) || {};
       const relatedTasks = tasksData.filter(t => t.run_card_id === rc.run_card_id);
       const sortedTasks = [...relatedTasks].sort((a, b) => a.sequence_order - b.sequence_order);
- 
-      // --- 對照 Stress 名稱 ---
-      // 在 stressList 中尋找 stress_id 相同的項目，並取出其中的 'stress' 欄位名稱
+
+      let dynamicStatus = "Init";
+      if (sortedTasks.length > 0) {
+        const isAllFinished = sortedTasks.every(t => t.check_out_time || t.status === "SKIPPED");
+        const isAnyStarted = sortedTasks.some(t => t.check_in_time || t.status === "SKIPPED");
+        if (isAllFinished) dynamicStatus = "Completed";
+        else if (isAnyStarted) dynamicStatus = "In-Process";
+        else dynamicStatus = "Init";
+      }
+
       const foundStress = stressList.find(s => s.stress_id === rc.stress_id);
       const displayStressName = foundStress ? foundStress.stress : (rc.stress_id || "N/A");
  
       return {
         id: rc.run_card_id,
         pIdx: proj.project_id || "",
-        status: rc.status || "Init",
+        status: dynamicStatus,
         createdDate: rc.created_at ? rc.created_at.split('T')[0] : (proj.created_at ? proj.created_at.split('T')[0] : ""),
         productFamily: proj.product_family || "",
         product: proj.product || "",
@@ -137,8 +153,7 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
         owner: proj.owner || "",
         remark: proj.remark || "",
         lotId: rc.lot_id || "",
-        stress: displayStressName, // 這裡儲存的是轉換後的文字 (如: ALT, BHAST)
-       
+        stress: displayStressName,
         type: sortedTasks[0]?.type || "",
         operation: sortedTasks.length > 0 ? sortedTasks.map(t => t.operation).join(" -> ") : "N/A",
         condition: sortedTasks[0]?.condition || "",
@@ -146,7 +161,7 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
         testProgram: sortedTasks[0]?.test_program || "",
         testScript: sortedTasks[0]?.test_script || "",
         checkIn: sortedTasks[0]?.check_in_time || "",
-        checkOut: sortedTasks[0]?.check_out_time || "",
+        checkOut: sortedTasks[sortedTasks.length - 1]?.check_out_time || "",
         qty: sortedTasks[0]?.unit_qty || "",
         hardware: sortedTasks[0]?.hardware || "",
         note: sortedTasks[0]?.note || ""
@@ -154,20 +169,15 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
     });
   }, [projects, runCardsData, tasksData, stressList]);
  
-  // --- 勾選邏輯 ---
   const toggleSelectAll = (checked) => {
-    if (checked) {
-      setSelectedIds(filteredRows.map(r => r.id));
-    } else {
-      setSelectedIds([]);
-    }
+    if (checked) setSelectedIds(filteredRows.map(r => r.id));
+    else setSelectedIds([]);
   };
  
   const toggleSelectRow = (id) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
  
-  // --- 真正從後端刪除並同步 ---
   const handleDeleteSelected = async () => {
     if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} records?`)) return;
     try {
@@ -193,34 +203,18 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
     let result = allData.filter(d => {
       const s = searchText.toLowerCase();
       const matchGlobal = s === "" || Object.values(d).some(v => String(v).toLowerCase().includes(s));
-     
       let matchDate = true;
       if (startDate || endDate) {
         const rowDate = new Date(d.createdDate).setHours(0,0,0,0);
         if (startDate && rowDate < new Date(startDate).setHours(0,0,0,0)) matchDate = false;
         if (endDate && rowDate > new Date(endDate).setHours(0,0,0,0)) matchDate = false;
       }
- 
       const matchCols = Object.keys(colFilters).every(key => {
         if (!colFilters[key] || colFilters[key].length === 0) return true;
         return colFilters[key].includes(String(d[key]));
       });
- 
       return matchGlobal && matchDate && matchCols;
     });
- 
-    Object.keys(colFilters).forEach(key => {
-      if (colFilters[key] && colFilters[key].length > 0) {
-        const filterOrder = colFilters[key];
-        result.sort((a, b) => {
-          const idxA = filterOrder.indexOf(String(a[key]));
-          const idxB = filterOrder.indexOf(String(b[key]));
-          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-          return 0;
-        });
-      }
-    });
- 
     return result;
   }, [allData, searchText, startDate, endDate, colFilters]);
  
@@ -232,9 +226,7 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
     return filteredRows.slice(start, start + pageSize);
   }, [filteredRows, currentPage, pageSize]);
  
-  const getUniqueValues = (key) => {
-    return [...new Set(allData.map(item => String(item[key] || "")))].sort();
-  };
+  const getUniqueValues = (key) => [...new Set(allData.map(item => String(item[key] || "")))].sort();
  
   const handleReset = () => {
     setSearchText("");
@@ -258,15 +250,12 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
     let start = Math.max(1, currentPage - 2);
     let end = Math.min(totalPages, start + maxVisible - 1);
     if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
- 
     return (
       <div className="custom-pagination">
         <button className="page-btn" disabled={currentPage === 1} onClick={() => setCurrentPage(1)}>{"<<"}</button>
         <button className="page-btn" disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)}>{"<"}</button>
         {Array.from({ length: Math.max(0, end - start + 1) }).map((_, i) => (
-          <button key={start + i} className={`page-btn ${currentPage === (start + i) ? 'active' : ''}`} onClick={() => setCurrentPage(start + i)}>
-            {start + i}
-          </button>
+          <button key={start + i} className={`page-btn ${currentPage === (start + i) ? 'active' : ''}`} onClick={() => setCurrentPage(start + i)}>{start + i}</button>
         ))}
         <button className="page-btn" disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(prev => prev + 1)}>{">"}</button>
         <button className="page-btn" disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(totalPages)}>{">>"}</button>
