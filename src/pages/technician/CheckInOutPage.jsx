@@ -4,6 +4,9 @@ import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import { useLocation } from "react-router-dom";
+// --- 新增這兩行 ---
+import * as ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -139,6 +142,56 @@ export default function CheckInOutPage() {
     }
   }, []);
 
+  // --- 在這裡插入 exportToExcel 函式 ---
+  const exportToExcel = async () => {
+    if (!currentProject || !targetStress) return;
+    try {
+      const response = await fetch('/template.xlsx'); 
+      if (!response.ok) throw new Error("找不到範本檔，請確認已放入 public/template.xlsx");
+      
+      const arrayBuffer = await response.arrayBuffer();
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(arrayBuffer);
+
+      // 安全地獲取工作表
+      const worksheet = workbook.worksheets[0] || workbook.getWorksheet(1);
+      
+      if (!worksheet) {
+        throw new Error("Excel 範本格式錯誤：找不到工作表(Worksheet)");
+      }
+
+      const h = currentProject.header;
+      // 填入標頭 - 這裡現在就不會噴 getCell of undefined 了
+      worksheet.getCell('B4').value = h["Product"] || "";
+      worksheet.getCell('D4').value = h["Version"] || "";
+      worksheet.getCell('E4').value = activeLot?.lotId || "";
+      worksheet.getCell('G4').value = h["QR"] || "";
+      worksheet.getCell('J4').value = h["Owner"] || "";
+
+      // 填入表格 rowData
+      targetStress.rowData.forEach((row, index) => {
+        const r = 16 + index; 
+        worksheet.getCell(`A${r}`).value = row.operation || "";
+        worksheet.getCell(`B${r}`).value = row.type || "";
+        worksheet.getCell(`D${r}`).value = row.qty || "";
+        
+        if (row.startTime && row.status !== "SKIPPED") {
+            const parts = String(row.startTime).split('\n');
+            worksheet.getCell(`G${r}`).value = parts[0]; 
+            worksheet.getCell(`H${r}`).value = parts[1]?.replace(/[()]/g, '') || "";
+        }
+        worksheet.getCell(`I${r}`).value = row.hardware || "";
+        worksheet.getCell(`J${r}`).value = row.note || "";
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      saveAs(new Blob([buffer]), `Traveler_${activeLot?.lotId}.xlsx`);
+    } catch (err) {
+      console.error("Export Error:", err);
+      alert("匯出失敗: " + err.message);
+    }
+  };
+  // ------------------------------------
   const columnDefs = useMemo(() => {
     const getCurrentInfo = () => {
       const user = sessionStorage.getItem("logged_user") || "Unknown";
@@ -349,6 +402,8 @@ export default function CheckInOutPage() {
     <div style={{ padding: "5px", background: "#ffffffff", minHeight: "100vh" }}>
       <div style={{ width: "100%", margin: "0 auto" }}>
         {renderWorkOrderHeader()}
+
+
         <div className="ag-theme-alpine custom-grid" style={{ width: "100%", overflow: "hidden" }}>
           {targetStress && (
             <AgGridReact
@@ -368,6 +423,20 @@ export default function CheckInOutPage() {
             />
           )}
         </div>
+        
+        {/* --- 在這裡插入按鈕 --- */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "10px" }}>
+          <button 
+            onClick={exportToExcel}
+            style={{ 
+              background: "#1d6f42", color: "#fff", padding: "6px 15px", 
+              borderRadius: "4px", cursor: "pointer", fontWeight: "bold", border: "none", fontSize: "12px" 
+            }}
+          >
+            📥 匯出 Excel (Traveler)
+          </button>
+        </div>
+        {/* ---------------------- */}
       </div>
       <style>{`
         .custom-grid { border: 1px solid #000000ff; border-radius: 0px; }
@@ -385,3 +454,4 @@ export default function CheckInOutPage() {
     </div>
   );
 }
+

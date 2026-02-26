@@ -9,7 +9,6 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
   const [runCardsData, setRunCardsData] = useState([]);
   const [tasksData, setTasksData] = useState([]);
   const [stressList, setStressList] = useState([]); // 新增：存放 Stress 名稱對照表
-  const [isDeleteMode, setIsDeleteMode] = useState(false);
  
   // --- 修改重點：Advanced Edit 跳轉邏輯 ---
   const handleAdvancedEdit = (row) => {
@@ -26,8 +25,6 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
   const [endDate, setEndDate] = useState("");
   const [colFilters, setColFilters] = useState({});
   const [colMenuSearch, setColMenuSearch] = useState({});
-  // --- 勾選與刪除狀態 ---
-  const [selectedIds, setSelectedIds] = useState([]);
   // --- 分頁狀態 ---
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -146,29 +143,6 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
       };
     });
   }, [projects, runCardsData, tasksData, stressList]);
- 
-  const toggleSelectAll = (checked) => {
-    if (checked) setSelectedIds(filteredRows.map(r => r.id));
-    else setSelectedIds([]);
-  };
- 
-  const toggleSelectRow = (id) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
- 
-  const handleDeleteSelected = async () => {
-    if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} records?`)) return;
-    try {
-      for (const id of selectedIds) {
-        await fetch(`${API_BASE}/run_cards/${id}`, { method: 'DELETE' });
-      }
-      setSelectedIds([]);
-      setIsDeleteMode(false);
-      loadData();
-    } catch (err) {
-      alert("Delete failed: " + err.message);
-    }
-  };
  
   const stats = useMemo(() => ({
     total: allData.length,
@@ -334,45 +308,6 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
               </ul>
             </div>
             <button className="action-button-custom btn-reset" onClick={handleReset}>⟳ Reset All</button>
-           
-            {/* --- 刪除模式控制開始 --- */}
-            {/* 修改點：只有非技術員才能看到刪除控制區 */}
-            {userRole !== 'technician' && (
-              <>
-                {!isDeleteMode ? (
-                  <button
-                    className="action-button-custom"
-                    style={{ borderColor: '#ef4444', color: '#ef4444' }}
-                    onClick={() => setIsDeleteMode(true)}
-                  >
-                    🗑️ Delete
-                  </button>
-                ) : (
-                  <div className="d-flex gap-2 animate-fade-in">
-                    <button
-                      className="btn btn-danger btn-sm shadow-sm"
-                      disabled={selectedIds.length === 0}
-                      onClick={() => {
-                        handleDeleteSelected();
-                        setIsDeleteMode(false);
-                      }}
-                    >
-                      Confirm Delete ({selectedIds.length})
-                    </button>
-                    <button
-                      className="btn btn-secondary btn-sm shadow-sm"
-                      onClick={() => {
-                        setIsDeleteMode(false);
-                        setSelectedIds([]);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-            {/* --- 刪除模式控制結束 --- */}
           </div>
           <div className="small text-muted">Found <b className="text-dark">{totalItems}</b> items</div>
         </div>
@@ -382,12 +317,7 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
           <div className="table-responsive custom-scrollbar">
             <table className="table-fixed-layout">
               <thead>
-                <tr>
-                  <th className="text-center" style={{ width: '40px', display: !isDeleteMode ? 'none' : 'table-cell' }}>
-                    <input type="checkbox" className="form-check-input"
-                      checked={selectedIds.length > 0 && selectedIds.length === filteredRows.length}
-                      onChange={(e) => toggleSelectAll(e.target.checked)} />
-                  </th>
+                <tr>             
                   <th className="text-center" style={{width:'50px'}}>NO.</th>
                   {columnConfig.map(col => {
                     if (!visibleCols[col.key]) return null;
@@ -442,11 +372,6 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
                 {currentTableData.map((r, i) => {
                   return (
                     <tr key={r.id} className="row-hover-effect">
-                      <td className="text-center" style={{ display: !isDeleteMode ? 'none' : 'table-cell' }}>
-                        <input type="checkbox" className="form-check-input"
-                          checked={selectedIds.includes(r.id)}
-                          onChange={() => toggleSelectRow(r.id)} />
-                      </td>
                       <td className="text-center no-cell">{(currentPage - 1) * pageSize + i + 1}</td>
                       {columnConfig.map(col => {
                         if (!visibleCols[col.key]) return null;
@@ -511,8 +436,7 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
               </tbody>
             </table>
           </div>
-        </div>
- 
+        </div> 
         <style>{`
           /* 頁面整體與容器佈局 */
           .main-page { width: 100%; min-height: 100vh; font-family: sans-serif; }
