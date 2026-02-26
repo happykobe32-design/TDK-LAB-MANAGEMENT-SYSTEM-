@@ -45,17 +45,6 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
     { key: "remark", label: "REMARK" },
     { key: "lotId", label: "LotID" },
     { key: "stress", label: "Stress" },
-    { key: "type", label: "Type" },
-    { key: "operation", label: "Operation" },
-    { key: "condition", label: "Condition" },
-    { key: "programName", label: "Program Name" },
-    { key: "testProgram", label: "Test Program" },
-    { key: "testScript", label: "Test Script" },
-    { key: "checkIn", label: "Check_in_Time" },
-    { key: "checkOut", label: "Check_Out_Time" },
-    { key: "qty", label: "Unit/Q'ty" },
-    { key: "hardware", label: "Hardware" },
-    { key: "note", label: "Note" }
   ];
   const DEFAULT_VISIBLE_COLUMNS = ["status","lotId","stress","qr","owner",];
  
@@ -154,17 +143,6 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
         remark: proj.remark || "",
         lotId: rc.lot_id || "",
         stress: displayStressName,
-        type: sortedTasks[0]?.type || "",
-        operation: sortedTasks.length > 0 ? sortedTasks.map(t => t.operation).join(" -> ") : "N/A",
-        condition: sortedTasks[0]?.condition || "",
-        programName: sortedTasks[0]?.program_name || "",
-        testProgram: sortedTasks[0]?.test_program || "",
-        testScript: sortedTasks[0]?.test_script || "",
-        checkIn: sortedTasks[0]?.check_in_time || "",
-        checkOut: sortedTasks[sortedTasks.length - 1]?.check_out_time || "",
-        qty: sortedTasks[0]?.unit_qty || "",
-        hardware: sortedTasks[0]?.hardware || "",
-        note: sortedTasks[0]?.note || ""
       };
     });
   }, [projects, runCardsData, tasksData, stressList]);
@@ -537,7 +515,7 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
  
         <style>{`
           /* 頁面整體與容器佈局 */
-          .main-page { width: 100%; min-height: 120vh; font-family: sans-serif; }
+          .main-page { width: 100%; min-height: 100vh; font-family: sans-serif; }
           .container-fluid { padding-top: 15px !important; padding-bottom: 0px; }
  
           /* 統計數據區塊 (Total, Completed 等數值框樣式) */
@@ -564,7 +542,7 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
           /* 表格外部容器 (控制陰影與表格高度) */
           /* 若下拉選單被切掉，可將此處 overflow 改為 visible */
           .table-container-fixed { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
-          .table-responsive { height: 120vh; overflow: auto; }
+          .table-responsive { max-height: 70vh; overflow: auto; }
          
           /* 表格本體結構 */
           .table-fixed-layout { width: auto; min-width: 100%; border-collapse: separate; border-spacing: 0; table-layout: auto; border-top: 0px solid #e2e8f0; }

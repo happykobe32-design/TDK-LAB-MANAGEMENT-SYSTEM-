@@ -142,9 +142,9 @@ const StressConfigPage = () => {
     return (
         <div className="container-fluid py-2" style={{ backgroundColor: "#f4f7f9", minHeight: "100vh" }}>
             {/* Header */}
-            <div className="d-flex justify-content-between align-items-center mb-2 px-2">
-                <h6 className="mb-0 text-secondary fw-bold" style={{ letterSpacing: "1px" }}>
-                    CONFIGURATION MAINTENANCE
+            <div className="d-flex justify-content-between align-items-center mb-2 px-0">
+                <h6 className="mb-0 text-secondary fw-bold" style={{ fontSize: '1rem', letterSpacing: '1px' }}>
+                    Test settings
                 </h6>
                 <button 
                     onClick={handleSave} 

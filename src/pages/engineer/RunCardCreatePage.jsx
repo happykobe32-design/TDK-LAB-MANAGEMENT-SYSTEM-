@@ -211,8 +211,6 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   const [lots, setLots] = useState([createInitialLot()]);
   const [activeLotId, setActiveLotId] = useState(lots[0].id);
 
-
-  // 2. 讀取資料 同步讀取資料庫 stress_test_settings 配置
 // 2. 讀取資料 同步讀取資料庫 stress_test_settings 配置
   useEffect(() => {
     fetch(`${API_BASE}/stress-test-settings/`)
@@ -225,8 +223,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
           
           if (!map[stressName]) {
             map[stressName] = [];
-          }
-          
+          }         
           // 將資料庫的小寫欄位轉換為你前端表格預期的大寫 Key (Type, Operation, Condition)
           map[stressName].push({
             Type: item.type || "",
@@ -234,14 +231,13 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
             Condition: item.condition || ""
           });
         });
-
         // 確保步驟是按照 sequence_order 排序（如果有需要的話）
         // 如果後端沒排好，這裡可以補一個 sort
         setStressMeta(map);
       })
       .catch(err => console.error("Stress DB sync failed:", err));
 
-    // --- 以下是你原有的 products 讀取邏輯，保持不變 ---
+    // ---  products 讀取邏輯 ---
     fetch(`${API_BASE}/products/`)
       .then(res => res.json())
       .then(dbData => {
@@ -389,7 +385,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       params.api.applyColumnState({ state: colStateRef.current, applyOrder: true });
     }
   };
-
+//handleSave//
 const handleSave = async () => {
   // 1. 必填檢查
   const requiredFields = ["Product Family", "Product", "Product ID", "Version", "QR", "Sample Size", "Owner"];
@@ -404,7 +400,7 @@ const handleSave = async () => {
     const projectPayload = {
       product_family: String(header["Product Family"]),
       product: String(header["Product"]),
-      product_id: String(header["Product ID"]), // 已支援中英文
+      product_id: String(header["Product ID"]), 
       version: String(header["Version"]),
       qr: String(header["QR"]),
       sample_size: String(header["Sample Size"]),
@@ -432,15 +428,26 @@ const handleSave = async () => {
     let taskCount = 0;
 
     for (const lot of lots) {
-      // 確保 lot.stresses 是一個陣列
       const stresses = lot.stresses || []; 
       
       for (const stressGroup of stresses) {
+        // 🚀 關鍵修改 1：從表格第一列抓取真正的 Stress 名稱
+        const rawValue = stressGroup.rowData?.[0]?.stress;
+        const isValidStress = rawValue && rawValue !== "-- Stress --" && rawValue !== "" && rawValue !== "New Stress";
+
+        // 🚀 關鍵修改 2：防呆機制
+        if (!isValidStress) {
+          alert(`❌ 儲存失敗！\nLOT: ${lot.lotId} 中有個 Stress 尚未選取有效名稱。\n請確保表格第一列的 Stress 欄位已正確填寫。`);
+          return; // 中斷整個存檔程序
+        }
+
+        const currentStressName = String(rawValue);
+
         // 建立 Run Card Payload
         const runCardPayload = {
           project_id: projectId,
           lot_id: String(lot.lotId || "New LOT"),
-          stress: String(stressGroup.stressName || "New Stress"), // 對應後端 stress 欄位
+          stress: currentStressName, // 這裡現在會傳送正確的名稱 (例如: ALT)
           status: "Init",
           created_by: String(header["Owner"])
         };
@@ -453,8 +460,7 @@ const handleSave = async () => {
 
         if (!rcRes.ok) {
           const errData = await rcRes.json();
-          // 如果這裡失敗（例如 Stress 名稱沒在資料庫裡），直接 throw 報錯
-          throw new Error(`RunCard 建立失敗 (${stressGroup.stressName}): ${errData.detail}`);
+          throw new Error(`RunCard 建立失敗 (${currentStressName}): ${errData.detail || "資料庫驗證失敗"}`);
         }
 
         const savedRC = await rcRes.json();
@@ -691,7 +697,7 @@ const handleSave = async () => {
 
           {/* --- STRESS LIST：左側邊欄佈局 --- */}
           <div style={{ display: "flex", border: "1px solid #e0e0e0", minHeight: "500px", background: "#fff", borderRadius: "4px", overflow: "hidden" }}>
-            {/*  精緻側邊欄 */}
+            {/* 精緻側邊欄 */}
             <div style={{ 
               width: isSidebarCollapsed ? "40px" : "150px", 
               borderRight: "1px solid #e0e0e0", 
@@ -714,123 +720,115 @@ const handleSave = async () => {
               </div>
 
               {!isSidebarCollapsed ? (
-                /* 🚀 展開狀態：移除外層 flex: 1，讓內容自然排列 */
+                /* 🚀 展開狀態 */
                 <div style={{ display: "flex", flexDirection: "column", height: "100%", overflowY: "auto" }}>
                   <div>
-                    {lot.stresses.map((s) => (
-                      <div 
-                        key={s.id} 
-                        onClick={() => switchStress(lot.id, s.id)}
-                        onDoubleClick={() => setEditingStressId(s.id)}
-                        style={{ 
-                          padding: "3px 5px", 
-                          cursor: "pointer", 
-                          borderBottom: "1px solid #c9cbccff", 
-                          background: lot.activeStressId === s.id ? "#e7f1ff" : "transparent",
-                          borderLeft: lot.activeStressId === s.id ? "2px solid #007bff" : "0px solid transparent",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          transition: "background 0.2s"
-                        }}
-                      >
-                        {editingStressId === s.id ? (
-                          <input 
-                            autoFocus
-                            style={{ width: "100%", border: "1px solid #007bff", fontSize: "12px", outline: "none" }}
-                            value={s.stressName}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setLots(prev => prev.map(l => l.id === lot.id ? {
-                                ...l, stresses: l.stresses.map(st => st.id === s.id ? { ...st, stressName: val } : st)
-                              } : l));
-                            }}
-                            onKeyDown={(e) => e.key === "Enter" && setEditingStressId(null)}
-                            onBlur={() => setEditingStressId(null)}
-                          />
-                        ) : (
-                          <>
-                            <span style={{ 
-                              fontSize: "12px", 
-                              fontWeight: lot.activeStressId === s.id ? "600" : "400",
-                              color: lot.activeStressId === s.id ? "#0056b3" : "#495057",
-                              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
-                            }}>
-                              {s.stressName || "Untitled"}
-                            </span>
-                            
-                            {/* 刪除叉叉：無防呆、切換至上一個 */}
-                            <span 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setLots(prev => prev.map(l => {
-                                  if (l.id !== lot.id) return l;
-                                  const deleteIndex = l.stresses.findIndex(st => st.id === s.id);
-                                  const newStresses = l.stresses.filter(item => item.id !== s.id);
-                                  let nextActiveId = l.activeStressId;
-                                  if (l.activeStressId === s.id) {
-                                    const prevStress = l.stresses[deleteIndex - 1];
-                                    nextActiveId = prevStress ? prevStress.id : (newStresses[0]?.id || null);
-                                  }
-                                  return { ...l, stresses: newStresses, activeStressId: nextActiveId };
-                                }));
+                    {lot.stresses.map((s) => {
+                      // 🚀 修改點：定義 autoName 抓取表格第一列的 Stress 內容
+                      const autoName = s.rowData?.[0]?.stress || "New Stress";
+
+                      return (
+                        <div 
+                          key={s.id} 
+                          onClick={() => switchStress(lot.id, s.id)}
+                          onDoubleClick={() => setEditingStressId(s.id)}
+                          style={{ 
+                            padding: "3px 5px", 
+                            cursor: "pointer", 
+                            borderBottom: "1px solid #c9cbccff", 
+                            background: lot.activeStressId === s.id ? "#e7f1ff" : "transparent",
+                            borderLeft: lot.activeStressId === s.id ? "2px solid #007bff" : "0px solid transparent",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            transition: "background 0.2s"
+                          }}
+                        >
+                          {editingStressId === s.id ? (
+                            <input 
+                              autoFocus
+                              style={{ width: "100%", border: "1px solid #007bff", fontSize: "12px", outline: "none" }}
+                              value={s.stressName}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setLots(prev => prev.map(l => l.id === lot.id ? {
+                                  ...l, stresses: l.stresses.map(st => st.id === s.id ? { ...st, stressName: val } : st)
+                                } : l));
                               }}
-                              style={{ 
-                                fontSize: "16px", color: "#adb5bd", padding: "0 5px", 
-                                transition: "color 0.2s", fontWeight: "bold" 
-                              }}
-                              onMouseOver={(e) => e.target.style.color = "#ff4d4f"}
-                              onMouseOut={(e) => e.target.style.color = "#adb5bd"}
-                            >
-                              ×
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    ))}
+                              onKeyDown={(e) => e.key === "Enter" && setEditingStressId(null)}
+                              onBlur={() => setEditingStressId(null)}
+                            />
+                          ) : (
+                            <>
+                              <span style={{ 
+                                fontSize: "12px", 
+                                fontWeight: lot.activeStressId === s.id ? "600" : "400",
+                                color: lot.activeStressId === s.id ? "#0056b3" : "#495057",
+                                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
+                              }}>
+                                {/* 🚀 顯示表格抓到的名稱 */}
+                                {autoName}
+                              </span>
+                              
+                              {/* 刪除叉叉 */}
+                              <span 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLots(prev => prev.map(l => {
+                                    if (l.id !== lot.id) return l;
+                                    const deleteIndex = l.stresses.findIndex(st => st.id === s.id);
+                                    const newStresses = l.stresses.filter(item => item.id !== s.id);
+                                    let nextActiveId = l.activeStressId;
+                                    if (l.activeStressId === s.id) {
+                                      const prevStress = l.stresses[deleteIndex - 1];
+                                      nextActiveId = prevStress ? prevStress.id : (newStresses[0]?.id || null);
+                                    }
+                                    return { ...l, stresses: newStresses, activeStressId: nextActiveId };
+                                  }));
+                                }}
+                                style={{ 
+                                  fontSize: "16px", color: "#adb5bd", padding: "0 5px", 
+                                  transition: "color 0.2s", fontWeight: "bold" 
+                                }}
+                                onMouseOver={(e) => e.target.style.color = "#ff4d4f"}
+                                onMouseOut={(e) => e.target.style.color = "#adb5bd"}
+                              >
+                                ×
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  {/* 🚀 Add Stress 按鈕：緊跟在列表下方 */}
+                  {/* 🚀 Add Stress 按鈕 */}
                   <div 
                     onClick={() => addStressToLot(lot.id)}
-                    style={{ padding: "8px 33px", 
-                      fontSize: "12px", 
-                      color: "#007bff", 
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      background: "transparent",
-                      borderBottom: "1px solid #f1f3f5",
-                      transition: "all 0.2s"
-                    }}
+                    style={{ padding: "8px 33px", fontSize: "12px", color: "#007bff", cursor: "pointer",display: "flex",alignItems: "center",gap: "6px",background: "transparent",borderBottom: "1px solid #f1f3f5",transition: "all 0.2s"}}
                     onMouseOver={(e) => { e.currentTarget.style.background = "#f8f9fa"; }}
                     onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
                   >
                     <span style={{ fontSize: "12px", fontWeight: "bold" }}>+</span>
                     <span style={{ fontSize: "11px", fontWeight: "bold" }}>Add Stress</span>
-                 </div>
+                </div>
                 </div>
               ) : (
-                /* 🚀 收合狀態：更精緻的方塊感 */
+                /* 🚀 收合狀態 */
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "10px", gap: "8px" }}>
-                  {lot.stresses.map(s => (
-                    <div 
-                      key={s.id}
-                      onClick={() => switchStress(lot.id, s.id)}
-                      style={{ 
-                        width: "24px", height: "24px", borderRadius: "4px",
-                        background: lot.activeStressId === s.id ? "#007bff" : "transparent",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: "10px", color: lot.activeStressId === s.id ? "#fff" : "#adb5bd",
-                        cursor: "pointer", fontWeight: "bold",
-                        border: lot.activeStressId === s.id ? "none" : "1px solid #eee"
-                      }}
-                      title={s.stressName}
-                    >
-                      {s.stressName?.charAt(0).toUpperCase() || "S"}
-                    </div>
-                  ))}
-                  {/* 收合時的快速新增 */}
+                  {lot.stresses.map(s => {
+                    // 🚀 修改點：收合時同樣抓取表格內容的第一個字
+                    const autoName = s.rowData?.[0]?.stress || "S";
+                    return (
+                      <div 
+                        key={s.id}
+                        onClick={() => switchStress(lot.id, s.id)}
+                        style={{ width: "24px", height: "24px", borderRadius: "4px",background: lot.activeStressId === s.id ? "#007bff" : "transparent",display: "flex", alignItems: "center", justifyContent: "center",fontSize: "10px", color: lot.activeStressId === s.id ? "#fff" : "#adb5bd",cursor: "pointer", fontWeight: "bold",border: lot.activeStressId === s.id ? "none" : "1px solid #eee"}}
+                        title={autoName}
+                      >
+                        {autoName.charAt(0).toUpperCase()}
+                      </div>
+                    );
+                  })}
                   <div 
                     onClick={() => addStressToLot(lot.id)}
                     style={{ width: "24px", height: "24px", display: "flex", alignItems: "center", justifyContent: "center", color: "#007bff", cursor: "pointer", fontSize: "18px" }}
@@ -842,7 +840,7 @@ const handleSave = async () => {
               )}
             </div>
 
-            {/* 右側表格內容：只顯示選中的那一個 Stress */}
+            {/* 右側表格內容 */}
             <div style={{ flex: 1, padding: "0px" }}>
               {lot.stresses.filter(s => s.id === (lot.activeStressId || lot.stresses[0]?.id)).map((s) => (
                 <div key={s.id} className="stress-box">
@@ -850,14 +848,16 @@ const handleSave = async () => {
                     <AgGridReact
                       rowData={s.rowData}
                       columnDefs={columnDefs}
-                      // 💡 關鍵：必須把當前的 lotId 和 stressId 傳給 context
                       context={{ lotId: lot.id, stressId: s.id }} 
                       onColumnResized={onColumnResized}
                       onGridReady={onGridReady}
                       onRowDragEnd={(e) => onRowDragEnd(e, lot.id, s.id)}
                       headerHeight={25}
                       domLayout="autoHeight"
-                      rowDragManaged={true} animateRows={true}
+                      rowDragManaged={true} 
+                      animateRows={true}
+                      // 🚀 加入這行，點擊滑鼠別處會自動儲存正在編輯的儲存格
+                      stopEditingWhenCellsLoseFocus={true}
                       getRowStyle={(params) => {
                         if (params.data.startTime === "SKIPPED") {
                           return { backgroundColor: "#e3e5e8ff", color: "#94a3b8", fontStyle: "italic" };
