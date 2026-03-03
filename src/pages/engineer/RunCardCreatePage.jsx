@@ -193,7 +193,7 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
   const newRow = () => ({
     _rid: "row_" + Date.now() + "_" + Math.random().toString(16).slice(2),
-    stress: "", type: "", operation: "", condition: "",
+    stress: "", type: "", operation: "", condition: "", time: "",
     programName: "", testProgram: "", testScript: "",
   });
 
@@ -387,6 +387,15 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   };
 //handleSave//
 const handleSave = async () => {
+  // 0. ✨ 獲取當前登入使用者資訊 (從 localStorage 抓取，若無則用 Owner 欄位)
+  const currentUser = localStorage.getItem("username") || header["Owner"] || "Unknown";
+  const token = localStorage.getItem("token"); // 如果你有實作 Token 驗證
+  
+  const commonHeaders = {
+    "Content-Type": "application/json",
+    ...(token && { "Authorization": `Bearer ${token}` }) // 若有 token 則帶入
+  };
+
   // 1. 必填檢查
   const requiredFields = ["Product Family", "Product", "Product ID", "Version", "QR", "Sample Size", "Owner"];
   for (let field of requiredFields) {
@@ -406,7 +415,8 @@ const handleSave = async () => {
       sample_size: String(header["Sample Size"]),
       owner: String(header["Owner"]),
       remark: String(header["Remark"] || ""),
-      status: "Active"
+      status: "Active",
+      created_by: currentUser
     };
 
     const projRes = await fetch(`${API_BASE}/projects/`, {
@@ -449,7 +459,7 @@ const handleSave = async () => {
           lot_id: String(lot.lotId || "New LOT"),
           stress: currentStressName, // 這裡現在會傳送正確的名稱 (例如: ALT)
           status: "Init",
-          created_by: String(header["Owner"])
+          created_by: currentUser
         };
 
         const rcRes = await fetch(`${API_BASE}/run_cards/`, {
@@ -476,13 +486,14 @@ const handleSave = async () => {
             type: String(row.type || ""),
             operation: String(row.operation || ""),
             condition: String(row.condition || ""),
+            time: String(row.time || ""), // ✨ 新增這行：將前端的 row.time 傳給後端的 time 欄位
             unit_qty: row.qty ? parseInt(row.qty) : 0, // 強制轉數字
             hardware: String(row.hardware || ""),
             test_program: String(row.testProgram || ""),
             program_name: String(row.programName || ""),
             test_script: String(row.testScript || ""),
             status: "Wait",
-            created_by: String(header["Owner"])
+            created_by: currentUser
           };
 
           const tRes = await fetch(`${API_BASE}/tasks/`, {
@@ -548,6 +559,7 @@ const handleSave = async () => {
       }
     },
     { headerName: "Condition", field: "condition", editable: true, width: 170,wrapText: true, autoHeight: true,cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
+    { headerName: "TIME", field: "time", editable: true, width: 170,wrapText: true, autoHeight: true,cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "Program Name", field: "programName", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "Test Program", field: "testProgram", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "Test Script", field: "testScript", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
