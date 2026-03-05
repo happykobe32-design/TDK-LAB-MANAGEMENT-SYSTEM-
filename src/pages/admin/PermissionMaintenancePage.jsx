@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-// 引入先前建立的 axios 實例
 import apiClient from "../../api/axios"; 
 import { AgGridReact } from "ag-grid-react";
 import "ag-grid-community/styles/ag-grid.css";
@@ -8,17 +7,19 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 const PermissionMaintenancePage = () => {
   const [userData, setUserData] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // 從 localStorage 抓取登入者的 ID
+  const currentUserId = localStorage.getItem("user_id");
+  const currentLoggedInUser = JSON.parse(localStorage.getItem("user") || "{}");
 
-  // 1. 從後端獲取使用者清單
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      // 對應 users.py 中的 @router.get("/")
       const response = await apiClient.get("/users/");
       setUserData(response.data);
     } catch (error) {
       console.error("Failed to retrieve user:", error); 
-      alert("無法取得使用者資料"); 
+      alert("⚠️Unable to obtain user data"); 
     } finally {
       setLoading(false);
     }
@@ -28,61 +29,106 @@ const PermissionMaintenancePage = () => {
     fetchUsers();
   }, []);
 
-  // 2. 處理權限變更並同步至後端 (已加入防呆機制)
-  const handleRoleChange = async (userId, newRoleId, currentUserData) => {
-    // 【防呆機制】：二次確認變更
+  // 2. 處理權限變更
+  const handleRoleChange = async (targetUserId, newRoleId, targetUserData) => {
+    // 防呆：確保不改到自己
+    if (String(targetUserId) === String(currentUserId)) {
+      alert("❌ Security Alert: You cannot modify your own role permissions.");
+      fetchUsers(); 
+      return;
+    }
+
     const roleNames = { 1: "Admin", 2: "Engineer", 3: "Technician" };
-    const confirmMsg = `Are you sure you want to change the permissions of user: [ ${currentUserData.user_name} ] role to [ ${roleNames[newRoleId]} ] ？`;
+    // 修正點：使用正確的 targetUserData
+    const confirmMsg = `Are you sure you want to change [ ${targetUserData.user_name} ] role to [ ${roleNames[newRoleId]} ]?`;
     
     if (!window.confirm(confirmMsg)) {
-        fetchUsers(); // 刷回原始數據，避免下拉選單狀態不一致
+        fetchUsers();
         return;
     }
 
     try {
-      // 對應 users.py 中的 @router.put("/{user_id}")
-      await apiClient.put(`/users/${userId}`, {
-        user_name: currentUserData.user_name,
-        email: currentUserData.email,
+      // 修正點：將 userId 改為 targetUserId，currentUserData 改為 targetUserData
+      await apiClient.put(`/users/${targetUserId}`, {
+        user_name: targetUserData.user_name,
+        email: targetUserData.email,
         role_id: newRoleId,
-        is_active: currentUserData.is_active
+        is_active: targetUserData.is_active
       });
       
-      alert(`✅User: ${currentUserData.user_name} permissions have been updated`);
-      fetchUsers(); // 重新整理清單
+      alert(`✅ User: ${targetUserData.user_name} permissions updated`);
+      fetchUsers(); 
     } catch (error) {
       console.error("Update failed:", error); 
-      alert("Update failed: " + (error.response?.data?.detail || "Network error"));
-      fetchUsers(); // 發生錯誤時刷回原始數據
+      alert("❌Update failed: " + (error.response?.data?.detail || "Network error"));
+      fetchUsers();
     }
   };
 
-  // 3. 處理移除帳號 (已加入防呆機制)
-  const handleDeleteUser = async (userId, userName) => {
-    if (!window.confirm(`Are you sure you want to remove the account ${userName}?`)) return; 
+  // 3. 處理「帳號啟用/停用」
+  const toggleUserStatus = async (targetUserData) => {
+    // 修正點：防呆判斷變數名稱修正
+    if (String(targetUserData.user_id) === String(currentUserId)) {
+      alert("❌ Security Alert: You cannot disable your own account!");
+      return;
+    }
+
+    const nextStatus = !targetUserData.is_active;
+    const actionText = nextStatus ? "Enable" : "Disable";
+    
+    const confirmMsg = `Are you sure you want to ${actionText} the account: ${targetUserData.user_name}?`
+    if (!window.confirm(confirmMsg)) return;
+
     try {
-      // 對應 users.py 中的 @router.delete("/{user_id}")
-      await apiClient.delete(`/users/${userId}`);
-      alert("Account has been successfully removed");
+      // 修正點：變更為 targetUserData
+      await apiClient.put(`/users/${targetUserData.user_id}`, {
+        user_name: targetUserData.user_name,
+        email: targetUserData.email,
+        role_id: targetUserData.role_id,
+        is_active: nextStatus
+      });
+      
+      alert(`✅Account ${targetUserData.user_name} has been ${nextStatus ? "Enabled" : "Disabled"}`);
       fetchUsers();
     } catch (error) {
-      alert("Failed to remove account");
+      console.error("Status toggle failed:", error);
+      alert("❌Failed to update account status");
     }
   };
 
   // 定義表格欄位
   const columnDefs = [
-    { headerName: "ID", field: "user_id", width: 80, sortable: true },
+    { 
+      headerName: "ID", 
+      field: "user_id", 
+      width: 70, 
+      sortable: true, 
+      sort: 'asc', 
+      // ✨ 修正1：ID 置中靠右感
+      cellStyle: { textAlign: 'center', fontWeight: '500' }, 
+      headerClass: 'text-center'
+    },
+    { 
+      headerName: "Status", 
+      field: "is_active", 
+      width: 110,
+      cellRenderer: (params) => (
+        params.value ? 
+        <span className="badge mt-2 shadow-sm" style={{ backgroundColor: '#28a745', color: 'white', padding: '5px 10px', fontSize: '12px' }}>Active</span> : 
+        <span className="badge mt-2 shadow-sm" style={{ backgroundColor: '#6c757d', color: 'white', padding: '5px 10px', fontSize: '12px' }}>Disabled</span>
+      )
+    },
     { headerName: "User_Name", field: "user_name", flex: 1, filter: true },
     { headerName: "Email", field: "email", flex: 1.5 },
     { 
-      headerName: "System Role (Dropdown Edit)", 
+      headerName: "System Role", 
       field: "role_id",
       flex: 1.2,
       cellRenderer: (params) => (
         <select 
           className="form-select form-select-sm mt-1 border-primary-subtle"
           value={params.value || ""}
+          disabled={!params.data.is_active} 
           onChange={(e) => handleRoleChange(params.data.user_id, parseInt(e.target.value), params.data)}
         >
           <option value={1}>Admin</option>
@@ -93,23 +139,24 @@ const PermissionMaintenancePage = () => {
     },
     {
       headerName: "Operation",
-      width: 120,
+      width: 140,
       cellRenderer: (params) => (
         <button 
-          className="btn btn-sm btn-outline-danger mt-1"
-          onClick={() => handleDeleteUser(params.data.user_id, params.data.user_name)}
+          className={`btn btn-sm mt-1 w-100 fw-bold ${params.data.is_active ? "btn-outline-danger" : "btn-outline-secondary"}`}
+          onClick={() => toggleUserStatus(params.data)}
         >
-          Remove
+          {params.data.is_active ? "Disable" : "Enable"}
         </button>
       )
     }
   ];
 
+  const defaultColDef = { resizable: true };
+
   return (
     <div className="container-fluid py-0">
       <div className="card shadow-sm border-0 rounded-0">
-        {/* 表頭區 */}
-        <div className="card-header bg-white py-0">
+        <div className="card-header bg-white py-2">
           <div className="d-flex justify-content-between align-items-center">
             <button className="btn btn-outline-primary btn-sm px-2" onClick={fetchUsers}>
               ⟳ Refresh
@@ -117,18 +164,18 @@ const PermissionMaintenancePage = () => {
           </div>
         </div>
 
-        {/* 表格內容區 */}
-        <div className="card-body">
+        <div className="card-body p-0">
           {loading ? (
             <div className="text-center py-5">
               <div className="spinner-border text-primary text-sm" role="status"></div>
-              <div className="mt-2 text-muted">Loading Data...</div>
+              <div className="mt-2 text-muted">Loading Database...</div>
             </div>
           ) : (
             <div className="ag-theme-alpine shadow-none" style={{ height: 600, width: '100%' }}>
               <AgGridReact
                 rowData={userData}
                 columnDefs={columnDefs}
+                defaultColDef={defaultColDef}
                 pagination={true}
                 paginationPageSize={30}
                 rowHeight={55}

@@ -123,8 +123,11 @@ const handleLogin = async () => {
       setUserRole(loggedRole);
       sessionStorage.setItem("logged_user", dbUser.user_name);
       sessionStorage.setItem("logged_role", loggedRole);
-      // ✨ 同時存入 localStorage (給 handleSave 抓取，統一用 "username" 這個 Key)
+
+      // ✨ 重點修改：除了存名字，一定要存 ID，因為名字可能會重複，但 ID 不會
+      localStorage.setItem("user_id", dbUser.user_id); 
       localStorage.setItem("username", dbUser.user_name);
+
       setSidebarOpen(false);
       navigate(redirectPath);
     }
