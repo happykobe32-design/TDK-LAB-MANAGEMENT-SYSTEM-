@@ -254,7 +254,10 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
       })
       .catch(err => console.error("Database sync failed:", err));
 
-    const savedTemplates = JSON.parse(localStorage.getItem("runcard_templates") || "[]");
+    // 獲取用戶特定的模板(Save Template)
+    const username = localStorage.getItem("username") || "default";
+    const templateKey = `runcard_templates_${username}`;
+    const savedTemplates = JSON.parse(localStorage.getItem(templateKey) || "[]");
     setTemplates(savedTemplates);
 
     if (pIdx !== null) {
@@ -327,18 +330,36 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     const name = window.prompt("Enter template name for this Stress:", stress.stressName || "");
     if (!name) return;
 
-    // 格式標準化：只存 rowData (步驟)，不存 ID
-    const newTemplate = { 
-      name: name, 
-      id: "tpl_" + Date.now(),
-      isSingleStress: true, // 標記這是單一 Stress 的模板
-      steps: stress.rowData.map(({ _rid, ...p }) => p) 
-    };
+    const username = localStorage.getItem("username") || "default";
+    const key = `runcard_templates_${username}`;
+    const currentTemplates = JSON.parse(localStorage.getItem(key) || "[]");
 
-    const updated = [...templates, newTemplate];
-    setTemplates(updated);
-    localStorage.setItem("runcard_templates", JSON.stringify(updated));
-    alert(`✅ Template "${name}" saved!`);
+    const existingIndex = currentTemplates.findIndex(t => t.name === name);
+
+    let shouldSave = true;
+    if (existingIndex !== -1) {
+      shouldSave = window.confirm(`Template "${name}" already exists. Do you want to overwrite it?`);
+    }
+
+    if (shouldSave) {
+      // 格式標準化：只存 rowData (步驟)，不存 ID
+      const newTemplate = { 
+        name: name, 
+        id: "tpl_" + Date.now(),
+        isSingleStress: true, // 標記這是單一 Stress 的模板
+        steps: stress.rowData.map(({ _rid, ...p }) => p) 
+      };
+
+      if (existingIndex !== -1) {
+        currentTemplates[existingIndex] = newTemplate;
+      } else {
+        currentTemplates.push(newTemplate);
+      }
+
+      setTemplates(currentTemplates);
+      localStorage.setItem(key, JSON.stringify(currentTemplates));
+      alert(`✅ Template "${name}" saved!`);
+    }
   };
 
   const applyTemplate = (lotId, template) => {
@@ -367,9 +388,11 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
 
   const deleteTemplateAction = (idx) => {
     if (window.confirm(`Are you sure you want to delete "${templates[idx].name}"?`)) {
-        const updated = templates.filter((_, i) => i !== idx);
-        setTemplates(updated);
-        localStorage.setItem("runcard_templates", JSON.stringify(updated));
+      const username = localStorage.getItem("username") || "default";
+      const key = `runcard_templates_${username}`;
+      const updated = templates.filter((_, i) => i !== idx);
+      setTemplates(updated);
+      localStorage.setItem(key, JSON.stringify(updated));
     }
   };
 
