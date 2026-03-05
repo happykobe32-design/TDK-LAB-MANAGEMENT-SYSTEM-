@@ -503,6 +503,18 @@ const handleSave = async () => {
         // --- STEP 3: 建立 Tasks ---
         const rows = stressGroup.rowData || [];
         for (const [idx, row] of rows.entries()) {
+  
+        // 🚀 關鍵 3：儲存防呆邏輯
+        const rawTime = row.time;
+        let finalTime = "";
+
+        if (rawTime !== null && rawTime !== undefined && rawTime !== "") {
+          if (isNaN(parseFloat(rawTime))) {
+            alert(`❌ 儲存失敗！\n在 ${currentStressName} 的第 ${idx + 1} 個步驟中，TIME 必須是數字。`);
+            return; // 中斷儲存
+          }
+          finalTime = String(rawTime); // 轉字串發送給後端
+        }
           const taskPayload = {
             run_card_id: parseInt(runCardId),
             sequence_order: idx + 1,
@@ -536,7 +548,7 @@ const handleSave = async () => {
       }
     }
 
-    alert(`✅ 儲存成功！\nProject ID: ${projectId}\nRun Cards: ${runCardCount}\nTasks: ${taskCount}`);
+    alert(`✅ 儲存成功！\nQR: ${header["QR"]}\nProject ID: ${projectId}\nRun Cards: ${runCardCount}\nTasks: ${taskCount}`);
     window.location.hash = "/list";
 
   } catch (error) {
@@ -582,7 +594,31 @@ const handleSave = async () => {
       }
     },
     { headerName: "Condition", field: "condition", editable: true, width: 170,wrapText: true, autoHeight: true,cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
-    { headerName: "TIME", field: "time", editable: true, width: 170,wrapText: true, autoHeight: true,cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
+    { 
+      headerName: "TIME", 
+      field: "time", 
+      editable: true, 
+      width: 60,
+      wrapText: true, 
+      autoHeight: true,
+      // 🚀 關鍵 1：顯示 (hr) 單位
+      valueFormatter: (p) => {
+        if (p.value === null || p.value === undefined || p.value === "") return "";
+        return `${p.value} (hr)`;
+      },
+      // 🚀 關鍵 2：強制只轉換為數字 (若使用者打字串會變成空或原數字)
+      valueParser: (params) => {
+        const newVal = params.newValue;
+        if (newVal === "") return "";
+        const parsed = parseFloat(newVal);
+        return isNaN(parsed) ? params.oldValue : parsed; // 如果打字就還原，或者是數字才存入
+      },
+      cellStyle: { 
+        fontSize: "12px", 
+        textAlign: "right", // 數字靠右比較美觀
+        padding: "4px 8px" 
+      } 
+    },
     { headerName: "Program Name", field: "programName", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "Test Program", field: "testProgram", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },
     { headerName: "Test Script", field: "testScript", editable: true, width: 150, wrapText: true, autoHeight: true, cellStyle: { fontSize: "12px", fontWeight: "normal", lineHeight: "1.5", display: "block", padding: "4px 8px" } },

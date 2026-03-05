@@ -183,18 +183,38 @@ export default function CheckInOutPage() {
               color: p.value === "COMPLETED" ? "#065f46" : (p.value === "IN-PROCESS" ? "#92400e" : (p.value === "SKIPPED" ? "#94a3b8" : "#64748b"))
             }}>{p.value}</span>
           </div>
-        )
+        ),
+        cellStyle: (p) => ({display: "flex", alignItems: "center", justifyContent: "center",})
       },
       { headerName: "Type", field: "type", width: 70, editable: getEditable("type") },
       { headerName: "Operation", field: "operation", width: 90, editable: getEditable("operation") },
       { headerName: "Condition", field: "condition", width: 130, wrapText: true, autoHeight: true, editable: getEditable("condition") },
-      { headerName: "Time", field: "time", width: 80, editable: getEditable("time")},
+      { 
+        headerName: "Time", 
+        field: "time", 
+        width: 60, 
+        editable: getEditable("time"),
+        // 🚀 顯示面：加上 (hr)
+        valueFormatter: (p) => {
+          if (p.value === null || p.value === undefined || p.value === "") return "";
+          return `${p.value} (hr)`;
+        },
+        // 🚀 資料面：確保使用者輸入的是數字
+        valueParser: (params) => {
+          const newVal = params.newValue;
+          if (newVal === "") return "";
+          const parsed = parseFloat(newVal);
+          // 如果輸入的不是數字，則還原回舊值
+          return isNaN(parsed) ? params.oldValue : parsed;
+        },
+        cellStyle: (p) => ({display: "flex", alignItems: "center", justifyContent: "center",})
+      },
       { headerName: "Program Name", field: "programName", width: 100, wrapText: true, autoHeight: true, editable: getEditable("programName") },
       { headerName: "Test Program", field: "testProgram", width: 100, wrapText: true, autoHeight: true, editable: getEditable("testProgram") },
       { headerName: "Test Script", field: "testScript", width: 100, wrapText: true, autoHeight: true, editable: getEditable("testScript") },
       { headerName: "Units", field: "qty", width: 60, editable: getEditable("qty"), cellStyle: { background: "#fffbe6" } },
       {
-        headerName: "CHECK-IN", field: "startTime", width: 115,
+        headerName: "CHECK-IN", field: "startTime", width: 125,
         cellRenderer: p => {
           if (p.value) {
             const parts = String(p.value).split('\n');
