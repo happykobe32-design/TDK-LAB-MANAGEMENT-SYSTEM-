@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom"; // 加入這行
+import { useNavigate } from "react-router-dom";
 import ReactDOM from "react-dom";
 import { AgGridReact } from "ag-grid-react";
 import { ModuleRegistry } from "ag-grid-community";
@@ -171,6 +172,7 @@ const EditableDropdown = ({ value, options, onChange, placeholder, disabled }) =
 export default function RunCardFormPage({ handleFinalSubmit }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const queryParams = new URLSearchParams(location.search);
   const pIdx = queryParams.get("pIdx"); // 獲取網址上的索引
 
@@ -425,7 +427,7 @@ const handleSave = async () => {
     if (!header[field]) return alert(`⚠️ 請填寫 ${field}`);
   }
 
-  if (!window.confirm("確定要儲存專案與所有 Run Cards 嗎？")) return;
+  if (!window.confirm("Are you sure you want to save？")) return;
 
   try {
     // --- STEP 1: 建立 Project ---
@@ -450,6 +452,8 @@ const handleSave = async () => {
 
     if (!projRes.ok) {
       const errData = await projRes.json();
+      // ✨ 關鍵：這裡會顯示後端寫的 "⚠️ QR Code 'XXX' 已存在..."
+      const errorMsg = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
       throw new Error(`專案建立失敗: ${errData.detail || "未知錯誤"}`);
     }
 
@@ -548,8 +552,8 @@ const handleSave = async () => {
       }
     }
 
-    alert(`✅ 儲存成功！\nQR: ${header["QR"]}\nProject ID: ${projectId}\nRun Cards: ${runCardCount}\nTasks: ${taskCount}`);
-    window.location.hash = "/list";
+    alert(`✅ Save successful！\nQR: ${header["QR"]}\nProject ID: ${projectId}\nRun Cards: ${runCardCount}\nTasks: ${taskCount}`);
+    navigate("/list");
 
   } catch (error) {
     console.error("Save failed:", error);
