@@ -169,6 +169,43 @@ const EditableDropdown = ({ value, options, onChange, placeholder, disabled }) =
   );
 };
 
+// 🚀 加在這裡 (元件外面)
+const transformBackendToLots = (runCards) => {
+  const lotMap = {};
+  runCards.forEach(rc => {
+    const lid = rc.lot_id;
+    if (!lotMap[lid]) {
+      lotMap[lid] = {
+        id: "lot_" + Math.random().toString(16).slice(2),
+        lotId: lid,
+        stresses: [],
+        activeStressId: null
+      };
+    }
+    const stressId = "str_" + Math.random().toString(16).slice(2);
+    const newStress = {
+      id: stressId,
+      // ✨ 關鍵：確保這裡抓的是後端給的 stress 名稱 (如 ALT, BHAST)
+      stressName: rc.stress || "Unknown",
+      rowData: rc.tasks.map(t => ({
+        _rid: "row_" + Math.random().toString(16).slice(2),
+        stress: rc.stress,
+        type: t.type,
+        operation: t.operation,
+        condition: t.condition,
+        time: t.time,
+        qty: t.unit_qty,
+        programName: t.program_name || "",  
+        testProgram: t.test_program || "",
+        testScript: t.test_script || "",
+      }))
+    };
+    lotMap[lid].stresses.push(newStress);
+    if (!lotMap[lid].activeStressId) lotMap[lid].activeStressId = stressId;
+  });
+  return Object.values(lotMap);
+};
+
 export default function RunCardFormPage({ handleFinalSubmit }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const location = useLocation();
@@ -263,15 +300,60 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
     setTemplates(savedTemplates);
 
     if (pIdx !== null) {
-      const allProjects = JSON.parse(localStorage.getItem("all_projects") || "[]");
-      const target = allProjects[parseInt(pIdx)];
-      if (target) {
-        setHeader(target.header);
-        setLots(target.lots);
-        if (target.lots && target.lots.length > 0) {
-          setActiveLotId(target.lots[0].id);
-        }
-      }
+      // 獲取網址上的特定參數 (從 List 頁面傳過來的)
+      const targetLotId = queryParams.get("lotId");
+      const targetStressName = queryParams.get("stress");
+
+      fetch(`${API_BASE}/projects/${pIdx}/full_detail`)
+        .then(res => {
+          if (!res.ok) throw new Error("Project not found");
+          return res.json();
+        })
+        .then(data => {
+          // 1. 回填 Header
+          setHeader({
+            "Product Family": data.product_family || "",
+            "Product": data.product || "",
+            "Product ID": data.product_id || "",
+            "Version": data.version || "",
+            "QR": data.qr || "",
+            "Sample Size": data.sample_size || "",
+            "Owner": data.owner || "",
+            "Remark": data.remark || "",
+            "created_at": data.created_at || ""
+          });
+
+          // 2. 核心轉換
+          if (data.run_cards && data.run_cards.length > 0) {
+            const formattedLots = transformBackendToLots(data.run_cards);
+            
+            // ✨ 修改：先計算出正確的定位，再統一 setLots
+            let finalLots = formattedLots;
+            let finalActiveLotId = formattedLots[0].id;
+
+            // 尋找匹配的 Lot
+            const targetLot = formattedLots.find(l => l.lotId === targetLotId);
+            if (targetLot) {
+              finalActiveLotId = targetLot.id; // 定位到該 Lot
+
+              // 尋找該 Lot 下匹配的 Stress
+              const targetStr = targetLot.stresses.find(s => s.stressName === targetStressName);
+              if (targetStr) {
+                // 將該 Lot 的選中 Stress ID 更新
+                finalLots = formattedLots.map(l => 
+                  l.lotId === targetLotId ? { ...l, activeStressId: targetStr.id } : l
+                );
+              }
+            }
+
+            setLots(finalLots);
+            setActiveLotId(finalActiveLotId);
+          }
+        })
+        .catch(err => {
+          console.error("載入專案詳情失敗:", err);
+          alert("無法載入專案資料，請確認該專案是否存在。");
+        });
     }
   }, [pIdx]);
 
@@ -412,9 +494,12 @@ export default function RunCardFormPage({ handleFinalSubmit }) {
   };
 //handleSave//
 const handleSave = async () => {
-  // 0. ✨ 獲取當前登入使用者資訊 (從 localStorage 抓取，若無則用 Owner 欄位)
+  // 0. ✨ 獲取當前登入使用者資訊
   const currentUser = localStorage.getItem("username") || header["Owner"] || "Unknown";
   const token = localStorage.getItem("token"); // 如果你有實作 Token 驗證
+
+  // 🚀 關鍵修正：先把 isEditMode 定義好，後面的程式碼才能用它
+  const isEditMode = pIdx !== null && pIdx !== undefined && pIdx !== "";
   
   const commonHeaders = {
     "Content-Type": "application/json",
@@ -427,7 +512,11 @@ const handleSave = async () => {
     if (!header[field]) return alert(`⚠️ 請填寫 ${field}`);
   }
 
-  if (!window.confirm("Are you sure you want to save？")) return;
+  //  2：根據模式變更確認視窗文字
+  const confirmMsg = isEditMode 
+    ? "Are you sure you want to update?" 
+    : "Are you sure you want to save?";
+  if (!window.confirm(confirmMsg)) return;
 
   try {
     // --- STEP 1: 建立 Project ---
@@ -444,8 +533,14 @@ const handleSave = async () => {
       created_by: currentUser
     };
 
-    const projRes = await fetch(`${API_BASE}/projects/`, {
-      method: "POST",
+    // 🚀 修改：確保 pIdx 存在 (不管是數字型態還是字串型態)
+    const isEditMode = pIdx !== null && pIdx !== undefined && pIdx !== "";
+
+    const apiUrl = isEditMode ? `${API_BASE}/projects/${pIdx}` : `${API_BASE}/projects/`;
+    const apiMethod = isEditMode ? "PUT" : "POST";
+
+    const projRes = await fetch(apiUrl, {
+      method: apiMethod, // ✨ 動態切換 POST 或 PUT
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(projectPayload),
     });
@@ -459,6 +554,16 @@ const handleSave = async () => {
 
     const savedProj = await projRes.json();
     const projectId = savedProj.project_id;
+
+    // 🚀 修改：確保只有在「編輯模式」下才去清空子項目
+    if (isEditMode) {
+      const clearRes = await fetch(`${API_BASE}/projects/${projectId}/clear_subitems`, { 
+        method: "DELETE" 
+      });
+      if (!clearRes.ok) {
+        console.warn("⚠️ 清空舊資料失敗，可能會導致資料重複。");
+      }
+    }
 
     // --- STEP 2 & 3: 建立 Run Cards 與 Tasks ---
     let runCardCount = 0;
@@ -662,9 +767,14 @@ const handleSave = async () => {
       {/* 頂部 Header */}
       <div className="prof-card" style={{ padding: "8px 8px", marginBottom: "-4px", borderRadius: "0", marginTop: "0", boxShadow: "none", border: "1px solid #e0e0e0" }}>
         <div className="header-grid" style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: "8px" }}>
-          {Object.keys(header).map((k) => (
-            <div className="header-item" key={k} style={{ display: "flex", flexDirection: "column" }}>
-              <label className="bold-label" style={{ fontSize: "11px", color: "#666", marginBottom: "2px" }}>{k.toUpperCase()}</label>
+          {/* 🚀 關鍵修正：加上 .filter() 過濾掉 created_at，不讓它生成輸入框 */}
+          {Object.keys(header)
+            .filter(k => k !== "created_at") 
+            .map((k) => (
+              <div className="header-item" key={k} style={{ display: "flex", flexDirection: "column" }}>
+                <label className="bold-label" style={{ fontSize: "11px", color: "#666", marginBottom: "2px" }}>
+                  {k.toUpperCase()}
+                </label>
               {k === "Product Family" ? (
                 <select className="form-select-custom" value={header[k]} onChange={(e) => setHeader({ ...header, [k]: e.target.value, Product: "", Version: "" })}>
                   <option value="">-- Select --</option>
@@ -950,8 +1060,39 @@ const handleSave = async () => {
         </div>
       ))}
 
-      <div className="form-actions-bar text-end" style={{ padding: "10px", borderTop: "1px solid #eee" }}>
-        <button className="btn-success-lg custom-btn-effect" style={{ padding: "5px 30px" }} onClick={handleSave}>Save</button>
+      <div className="form-actions-bar text-end" style={{ 
+        padding: "10px", 
+        borderTop: "1px solid #eee", 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "flex-end", 
+        gap: "15px" 
+      }}>
+
+        {/* 🚀 需求 2：顯示最後更新時間 (僅在編輯模式 header 有資料時顯示) */}
+        {header.created_at && (
+          <div style={{ 
+            color: "#666", 
+            fontSize: "13px", 
+            backgroundColor: "#f8f9fa", 
+            padding: "4px 10px", 
+            borderRadius: "4px",
+            border: "1px solid #ddd",
+            fontFamily: "monospace" // 使用等寬字體讓數字對齊更美觀
+          }}>
+            <strong style={{ marginRight: "5px" }}>🕒 Last Update:</strong>
+            {/* 轉為 YYYY-MM-DD HH:mm:ss 格式 */}
+            {new Date(header.created_at).toLocaleString('sv-SE').replace('T', ' ')}
+          </div>
+        )}
+
+        <button 
+          className="btn-success-lg custom-btn-effect" 
+          style={{ padding: "5px 30px" }} 
+          onClick={handleSave}
+        >
+          {pIdx ? "Update" : "Save"} {/* 🚀 建議按鈕文字也根據模式切換 */}
+        </button>
       </div>
 
       <style>{`
