@@ -31,25 +31,25 @@ export default function CheckInOutPage() {
   const isTechnician = userRole === "technician";
   const isAdminOrEngineer = userRole === "admin" || userRole === "engineer";
 
+// CheckInOutPage.jsx 中的 loadDataFromBackend
   const loadDataFromBackend = useCallback(async () => {
     const params = new URLSearchParams(location.search);
     const pIdx = params.get("pIdx");
-    const urlStressName = params.get("stress");
+    const rcIdx = params.get("rcIdx"); // 接收從 Dashboard 傳來的 ID
     const urlLotId = params.get("lotId");
 
     try {
-      const [pRes, rcRes, tRes, sListRes] = await Promise.all([
+      const [pRes, rcRes, tRes] = await Promise.all([
         fetch(`${API_BASE}/projects/`),
         fetch(`${API_BASE}/run_cards/`),
-        fetch(`${API_BASE}/tasks/`),
-        fetch(`${API_BASE}/stress/`)
+        fetch(`${API_BASE}/tasks/`)
       ]);
 
       const allP = await pRes.json();
       const allRC = await rcRes.json();
       const allT = await tRes.json();
-      const allS = await sListRes.json();
 
+      // 1. 定位專案 (上半部顯示)
       const proj = allP.find(p => p.project_id === parseInt(pIdx));
       if (proj) {
         setCurrentProject({
@@ -61,20 +61,24 @@ export default function CheckInOutPage() {
             "QR": proj.qr,
             "Owner": proj.owner,
             "Remark": proj.remark
-          },
-          productFamilyName: proj.product_family
+          }
         });
       }
 
-      const stressObj = allS.find(s => s.stress === urlStressName);
+      // 2. 關鍵修正：直接用 ID 定位 RunCard
+      // 如果 URL 有 rcIdx 就直接用 ID 找，沒有才用 Project + Lot 找 (相容舊邏輯)
       const rc = allRC.find(r => 
-        r.project_id === parseInt(pIdx) && 
-        r.stress_id === stressObj?.stress_id &&
-        (urlLotId ? r.lot_id === urlLotId : true)
+        rcIdx ? r.run_card_id === parseInt(rcIdx) : 
+        (r.project_id === parseInt(pIdx) && String(r.lot_id) === String(urlLotId))
       );
 
       if (rc) {
         setActiveLot({ lotId: rc.lot_id, id: rc.run_card_id });
+        
+        // 這裡也要補一個邏輯：如果當初跳轉沒給 stress 名稱，從 rc 裡反向抓回來
+        // 確保 UI 上能顯示正確的關卡名稱
+        const currentStressName = rc.stress_name || params.get("stress") || "Unknown";
+
         const relatedTasks = allT
           .filter(t => t.run_card_id === rc.run_card_id)
           .sort((a, b) => (a.sequence_order || 0) - (b.sequence_order || 0))
@@ -84,15 +88,12 @@ export default function CheckInOutPage() {
             startTime: t.check_in_time,
             endTime: t.check_out_time,
             qty: t.unit_qty,
-            programName: t.program_name,
-            testProgram: t.test_program,
-            testScript: t.test_script,
             status: t.status 
           }));
 
         setTargetStress({
           id: rc.run_card_id,
-          stress: urlStressName,
+          stress: currentStressName, // 這裡決定了下半部標題顯示什麼
           rowData: relatedTasks
         });
       }

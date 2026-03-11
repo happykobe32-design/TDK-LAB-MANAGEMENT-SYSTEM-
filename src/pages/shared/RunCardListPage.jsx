@@ -144,13 +144,6 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
     });
   }, [projects, runCardsData, tasksData, stressList]);
  
-  const stats = useMemo(() => ({
-    total: allData.length,
-    active: allData.filter(x => x.status === "In-Process").length,
-    done: allData.filter(x => x.status === "Completed").length,
-    init: allData.filter(x => x.status === "Init" || x.status === "Pending").length
-  }), [allData]);
- 
   const filteredRows = useMemo(() => {
     let result = allData.filter(d => {
       const s = searchText.toLowerCase();
@@ -218,23 +211,6 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
   return (
     <div className="main-page bg-white">
       <div className="container-fluid py-4">
-       
-        {/* 統計數字 */}
-        <div className="row g-2 mb-3">
-          {[
-            { label: "Total", val: stats.total, color: "#000" },
-            { label: "Completed", val: stats.done, color: "#16a34a" },
-            { label: "In-Process", val: stats.active, color: "#f59e0b" },
-            { label: "Init", val: stats.init, color: "#64748b"}
-          ].map((item, i) => (
-            <div key={i} className="col-md-3">
-              <div className="stats-box border-start border-4 shadow-sm" style={{ borderColor: item.color }}>
-                <div className="stats-title" style={{ color: item.color }}>{item.label}</div>
-                <div className="stats-num" style={{ color: item.color }}>{item.val}</div>
-              </div>
-            </div>
-          ))}
-        </div>
  
         {/* 控制列 */}
         <div className="row g-2 mb-1 align-items-center">
@@ -441,12 +417,7 @@ export default function RunCardListPage({ userRole, handleEdit, handleDelete }) 
           /* 頁面整體與容器佈局 */
           .main-page { width: 100%; min-height: 100vh; font-family: sans-serif; }
           .container-fluid { padding-top: 15px !important; padding-bottom: 0px; }
- 
-          /* 統計數據區塊 (Total, Completed 等數值框樣式) */
-          .stats-box { background: #ffffffff; padding: 0px 5px; border-radius: 8px; }
-          .stats-title { font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 0px; }
-          .stats-num { font-size: 18px; font-weight: 700; }
- 
+
           /* 搜尋列與日期選擇器外觀 */
           .search-wrap { position: relative; }
           .search-icon-fixed { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 14px; }
