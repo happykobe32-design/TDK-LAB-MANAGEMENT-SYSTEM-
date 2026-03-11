@@ -15,6 +15,17 @@ export default function CheckInOutPage() {
   const [activeLot, setActiveLot] = useState(null);
   const [targetStress, setTargetStress] = useState(null);
   const [configMaster, setConfigMaster] = useState(null);
+  // 加入 tick state 與定時器
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    // 建立一個每分鐘執行一次的定時器
+    const timer = setInterval(() => {
+      setTick(prev => prev + 1); // 改變 state 觸發組件重新渲染
+      console.log("Timer ticked: UI Refreshed"); // 測試用，成功後可刪除
+    }, 10000); // 10,000 毫秒 = 10 秒
+    // 當組件被銷毀時，清除定時器避免佔用記憶體
+    return () => clearInterval(timer);
+  }, []);
   
   const userRole = sessionStorage.getItem("logged_role"); 
   const isTechnician = userRole === "technician";
@@ -139,6 +150,36 @@ export default function CheckInOutPage() {
       alert("存檔失敗，請檢查網路連線或後端欄位驗證。");
     }
   }, []);
+  // 計算剩餘時間的邏輯
+  const getRemainingTime = (startTimeStr, durationHr) => {
+    if (!startTimeStr || !durationHr) return { isExpired: true, text: "" };
+
+    // 1. 從 "2026/3/11 10:00\n(Gina)" 提取日期部分
+    const rawDateStr = startTimeStr.split('\n')[0]; 
+    const startMoment = new Date(rawDateStr);
+    
+    if (isNaN(startMoment.getTime())) return { isExpired: true, text: "" };
+
+    // 2. 計算目標結束時間 (開始時間 + 設定的小時數)
+    const targetMoment = new Date(startMoment.getTime() + durationHr * 60 * 60 * 1000);
+    const now = new Date();
+
+    const diffMs = targetMoment - now; // 剩餘毫秒數
+
+    if (diffMs <= 0) {
+      return { isExpired: true, text: "" };
+    }
+
+    // 3. 轉換成小時與分鐘顯示
+    const totalMinutes = Math.floor(diffMs / (1000 * 60));
+    const hrs = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+
+    return { 
+      isExpired: false, 
+      text: `Remaining: ${hrs}h ${mins}m` 
+    };
+  };
 
   const columnDefs = useMemo(() => {
     const getCurrentInfo = () => {
@@ -250,36 +291,55 @@ export default function CheckInOutPage() {
         }
       },
       {
-        headerName: "CHECK-OUT", field: "endTime", width: 125,
+        headerName: "CHECK-OUT", 
+        field: "endTime", 
+        width: 125,
+        cellStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center' },
         cellRenderer: (params) => {
+          // A. 如果已經按了 FINISH (有值)，顯示結束時間與人名
           if (params.value) {
             const parts = String(params.value).split('\n');
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: '1.2', width: '100%' }}>
-                <span style={{ color: '#64748b', fontSize: '9px', whiteSpace: 'nowrap' }}>{parts[0]}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: '1.2' }}>
+                <span style={{ color: '#64748b', fontSize: '9px' }}>{parts[0]}</span>
                 <span style={{ color: '#1e3a8a', fontSize: '10px', fontWeight: 'bold' }}>{parts[1] || ""}</span>
               </div>
             );
           }
+
           if (params.data.status === "SKIPPED") return null;
 
-          // 只有在已經按了 START (有了 startTime) 且還沒按 FINISH 時才能按
-          const canFinish = !!params.data.startTime && !params.data.endTime;
-          
-          return (
-            <button
-              disabled={!canFinish}
-              className={`op-btn ${canFinish ? "end" : "disabled"}`}
-              onClick={() => {
-                if (window.confirm("Are you sure you want to FINISH?")) {
-                  syncUpdate(activeLot.id, targetStress.id, params.data._rid, { 
-                    endTime: getCurrentInfo(),
-                    status: "Done"
-                  });
-                }
-              }}
-            >■ FINISH</button>
-          );
+          // B. 如果已經按了 START，開始計算剩餘時間
+          if (params.data.startTime) {
+            const { isExpired, text } = getRemainingTime(params.data.startTime, params.data.time);
+
+            // 時間還沒到：顯示倒數文字
+            if (!isExpired) {
+              return (
+                <div style={{ color: "#d97706", fontSize: "10px", fontWeight: "bold", textAlign: "center" }}>
+                  ⏳ {text}
+                </div>
+              );
+            }
+
+            // 時間到了：顯示 FINISH 按鈕
+            return (
+              <button
+                className="op-btn end"
+                onClick={() => {
+                  if (window.confirm("Are you sure you want to FINISH?")) {
+                    syncUpdate(activeLot.id, targetStress.id, params.data._rid, { 
+                      endTime: getCurrentInfo(),
+                      status: "Done"
+                    });
+                  }
+                }}
+              >■ FINISH</button>
+            );
+          }
+
+          // C. 還沒按 START，按鈕禁用
+          return <button className="op-btn disabled" disabled>■ FINISH</button>;
         }
       },
       { headerName: "Hardware", field: "hardware", width: 80, editable: getEditable("hardware"), cellStyle: { background: "#fffbe6" } },

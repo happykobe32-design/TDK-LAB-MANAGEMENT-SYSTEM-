@@ -8,7 +8,7 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import logoImg from "./assets/company-logo.png";
 // === 引入 Lucide 專業圖示 (App 僅保留 Header/Layout 使用的圖示) ===
-import { ShieldCheck, Settings, Search, PlusCircle, ClipboardCheck,Menu } from 'lucide-react';
+import { ShieldCheck, Settings, Search, PlusCircle, ClipboardCheck,Menu, Home } from 'lucide-react';
 // === 引入外部組件 ===
 import LoginPage from "./components/LoginPage";
 import Sidebar from "./components/Sidebar";
@@ -23,6 +23,8 @@ import StressConfigPage from "./pages/admin/StressConfigPage";
 import RunCardListPage from "./pages/shared/RunCardListPage";
 import RunCardFormPage from "./pages/engineer/RunCardCreatePage";
 import CheckInOutPage from "./pages/technician/CheckInOutPage";
+// App.jsx 頂部
+import Dashboard from "./pages/Dashboard"; // 確保路徑對應到你存放 Dashboard.jsx 的位置
 // ==================================================
 // 系統常數
 const ROLES = {
@@ -109,13 +111,13 @@ const handleLogin = async () => {
 
       if (dbUser.role_id === 1) {
         loggedRole = ROLES.ADMIN;
-        redirectPath = "/permission";
+        redirectPath = "/";
       } else if (dbUser.role_id === 2) {
         loggedRole = ROLES.ENGINEER;
-        redirectPath = "/list";
+        redirectPath = "/";
       } else {
         loggedRole = ROLES.TECHNICIAN;
-        redirectPath = "/list";
+        redirectPath = "/";
       }
 
       // 4. 儲存登入資訊
@@ -277,6 +279,17 @@ const handleLogin = async () => {
           </div>
           
           <div className="ms-auto d-flex align-items-center gap-1 me-3">
+            {/* 房子圖示按鈕 */}
+            <button 
+              className="btn btn-link header-btn p-1 text-white border-0 shadow-none d-flex align-items-center" 
+              onClick={() => navigate("/")}
+              title="Dashboard"
+              style={{ transition: 'transform 0.2s' }}
+              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              <Home size={20} />
+            </button>
             <button className="lang-btn" style={langButtonStyle('en')} onClick={() => changeLanguage('en')}>EN</button>
             <span className="text-white-50 small">|</span>
             <button className="lang-btn" style={langButtonStyle('zh')} onClick={() => changeLanguage('zh')}>中文</button>
@@ -331,8 +344,10 @@ const handleLogin = async () => {
             <Route path="/list" element={(isAdmin || isEngineer || isTechnician) ? (<PageLayout title={t("NAV_VIEW")} icon={<Search size={20} />}><RunCardListPage runCards={runCards} userRole={userRole} handleEdit={handleEdit} handleDelete={handleDelete} /></PageLayout>) : <Navigate to="/checkinout" />} />
             <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_CREATE")} icon={<PlusCircle size={20} />}><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/checkinout" element={(isAdmin || isEngineer || isTechnician) ? (<PageLayout title={t("NAV_CHECK")} icon={<ClipboardCheck size={20} />}><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
-            {/* 修改為：除了 Admin，其他人都預設去 /list */}
-            <Route path="/" element={<Navigate to={isAdmin ? "/permission" : "/list"} />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            {/* 將根路徑 "/" 指向 Dashboard */}
+            <Route path="/" element={<Dashboard />} />
+            
           </Routes>
         </main>
       </div>
