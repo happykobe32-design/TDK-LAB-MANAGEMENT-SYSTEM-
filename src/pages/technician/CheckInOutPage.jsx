@@ -87,6 +87,9 @@ export default function CheckInOutPage() {
             _rid: String(t.task_id), 
             startTime: t.check_in_time,
             endTime: t.check_out_time,
+            programName: t.program_name, 
+            testProgram: t.test_program,
+            testScript: t.test_script,
             qty: t.unit_qty,
             status: t.status 
           }));
