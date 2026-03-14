@@ -49,6 +49,9 @@ function AppContent() {
   const [userRole, setUserRole] = useState(() => sessionStorage.getItem("logged_role"));
 
   const [loginData, setLoginData] = useState({ username: "", password: "" });
+  const [errorTrigger, setErrorTrigger] = useState(0); 
+  const [loginError, setLoginError] = useState(""); // 儲存錯誤訊息文字
+  const [isLoggingIn, setIsLoggingIn] = useState(false); // 新增：防止重複點擊與延遲感
 
   const [runCards, setRunCards] = useState(() => {
     const saved = localStorage.getItem("runCards_db");
@@ -77,11 +80,12 @@ function AppContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 1. 確保在 App.jsx 上方引入您的 axios 實例 (假設檔名為 apiClient)
 const handleLogin = async () => {
   const { username, password } = loginData;
-  // Super User ===  // 可自定義帳密
+  setIsLoggingIn(true); // 立即進入登入中狀態
+  // 如果是測試用帳密
   if (username === "123" && password === "123") {
+    setLoginError(""); // 成功才清空
     const devUser = "Developer Mode";
     const devRole = ROLES.ADMIN;
 
@@ -91,21 +95,20 @@ const handleLogin = async () => {
     sessionStorage.setItem("logged_role", devRole);
     
     setSidebarOpen(false);
-    navigate("/permission"); // 直接進入管理員頁面
-    return; // 結束函式，不執行下方的 API 請求
+    navigate("/"); 
+    return;
   }
-  // ======================================
+
   try {
-    // 2. 呼叫後端 API (傳送 user_name 和 email)
     const response = await apiClient.post("/users/login", {
       user_name: username, 
-      email: password      // 後端目前的邏輯是用 email 當作驗證欄位
+      email: password     
     });
 
     if (response.data.status === "success") {
+      setLoginError(""); // 成功才清空
       const dbUser = response.data.user;
 
-      // 3. 根據資料庫 role_id 判斷前端權限 ( 1 為 Admin ，2 為 Engineer，3 為 Technician )
       let loggedRole = "";
       let redirectPath = "";
 
@@ -120,13 +123,10 @@ const handleLogin = async () => {
         redirectPath = "/";
       }
 
-      // 4. 儲存登入資訊
       setUser(dbUser.user_name);
       setUserRole(loggedRole);
       sessionStorage.setItem("logged_user", dbUser.user_name);
       sessionStorage.setItem("logged_role", loggedRole);
-
-      // ✨ 重點修改：除了存名字，一定要存 ID，因為名字可能會重複，但 ID 不會
       localStorage.setItem("user_id", dbUser.user_id); 
       localStorage.setItem("username", dbUser.user_name);
 
@@ -134,15 +134,19 @@ const handleLogin = async () => {
       navigate(redirectPath);
     }
   } catch (error) {
-    // 顯示後端傳回的錯誤訊息 (如：帳號名稱不正確)
+    // 發生錯誤：不先清空文字，直接設定新文字並觸發抖動
     const errorMsg = error.response?.data?.detail || "網路或連線失敗";
-    alert(errorMsg);
+    setLoginError(errorMsg); 
+    setErrorTrigger(prev => prev + 1); 
+    setIsLoggingIn(false); // 結束登入狀態
   }
 };
 
   const handleLogout = () => {
     setUser(null);
     setUserRole(null);
+    setLoginError(""); // 重要：登出時清空錯誤
+    setErrorTrigger(0); // 重要：登出時計數歸零，防止下次進來自動抖動
     sessionStorage.removeItem("logged_user");
     sessionStorage.removeItem("logged_role");
     setLoginData({ username: "", password: "" });
@@ -236,7 +240,6 @@ const handleLogin = async () => {
     fontSize: "0.85rem"
   });
 
-// --- 如果未登入，顯示 LoginPage 元件 ---
   if (!user) {
     return (
       <LoginPage 
@@ -244,6 +247,8 @@ const handleLogin = async () => {
         setLoginData={setLoginData} 
         handleLogin={handleLogin} 
         changeLanguage={changeLanguage} 
+        errorTrigger={errorTrigger}
+        loginError={loginError} 
       />
     );
   }
@@ -279,7 +284,6 @@ const handleLogin = async () => {
           </div>
           
           <div className="ms-auto d-flex align-items-center gap-1 me-3">
-            {/* 房子圖示按鈕 */}
             <button 
               className="btn btn-link header-btn p-1 text-white border-0 shadow-none d-flex align-items-center" 
               onClick={() => navigate("/")}
@@ -314,7 +318,6 @@ const handleLogin = async () => {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", marginTop: 0 }}>
         
-        {/* === 抽離後的 Sidebar 元件 === */}
         <Sidebar 
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
@@ -345,9 +348,7 @@ const handleLogin = async () => {
             <Route path="/create" element={(isAdmin || isEngineer) ? (<PageLayout title={t("NAV_CREATE")} icon={<PlusCircle size={20} />}><RunCardFormPage handleFinalSubmit={handleFinalSubmit} /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/checkinout" element={(isAdmin || isEngineer || isTechnician) ? (<PageLayout title={t("NAV_CHECK")} icon={<ClipboardCheck size={20} />}><CheckInOutPage handleCheckInOutProp={handleCheckInOut} /></PageLayout>) : <Navigate to="/list" />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            {/* 將根路徑 "/" 指向 Dashboard */}
             <Route path="/" element={<Dashboard />} />
-            
           </Routes>
         </main>
       </div>
